@@ -55,6 +55,9 @@ room tokens for them.
 | Fidelity | The SDK documents losses on **import** (charts, drawings, pivots, validation, conditional formatting, comments, hyperlinks, themes); behaviour for complex workbooks on export was **not tested**. Prefer keeping the original file and check complex workbooks before relying on a round trip. |
 | Up to 5 s | Between polls an edit exists only in the browser; a crash or tab kill in that window loses it. |
 
+## Markdown (`.md`)
+Docs only opens `.docx`. A Markdown file shows a read-only preview with an **Open in Docs** button, which converts it in the browser into a *new* `.docx` next to it (`notes.md` → `notes.docx`, or `notes (2).docx`) and opens that in live Docs. The `.md` is never modified, and edits in Docs do not flow back to it. Supported: headings, bold/italic/strike, inline code, links, lists (nested), code blocks, quotes, tables, rules. Images become their alt text. [ran: tests/e2e/markdown.cjs, unit-tested]
+
 ## Not yet integrated
 - **PDF** and **Slides**: need carried patches (load + save hooks) — Phase 4 continues. Until then, opening them shows a preview
   page with a download button and says so.

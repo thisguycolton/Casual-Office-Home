@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, downloadUrl, inlineUrl, type FileDetails } from '../api.ts';
+import { api, downloadUrl, getCsrf, inlineUrl, type FileDetails } from '../api.ts';
+import { useToast } from '../components/ui.tsx';
 import { KindIcon, IconDownload, IconChevron } from '../components/icons.tsx';
 import { Spinner } from '../components/ui.tsx';
 import { EditorFrame } from '../editors/EditorFrame.tsx';
@@ -15,6 +16,8 @@ export function OpenPage() {
   const [d, setD] = useState<FileDetails | null>(null);
   const [err, setErr] = useState('');
   const [text, setText] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     let live = true; setD(null); setText(null); setErr('');
@@ -29,6 +32,28 @@ export function OpenPage() {
     }).catch((e) => live && setErr(e.message));
     return () => { live = false; };
   }, [id, nav]);
+
+  // Docs only opens .docx, so Markdown is converted into a NEW Word file (the original is never touched).
+  const openInDocs = async () => {
+    if (!d || text === null || converting) return;
+    setConverting(true);
+    try {
+      const { markdownToDocx } = await import('../markdownToDocx.ts');
+      const bytes = await markdownToDocx(text);
+      const base = d.name.replace(/\.[^.]+$/, '');
+      let body: any = {};
+      for (let n = 1; n <= 20; n++) {
+        const q = new URLSearchParams({ name: n === 1 ? `${base}.docx` : `${base} (${n}).docx` }); if (d.parentId) q.set('parentId', d.parentId);
+        const r = await fetch(`/api/files?${q}`, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/octet-stream', 'x-csrf-token': getCsrf() }, body: bytes });
+        body = await r.json().catch(() => ({}));
+        if (r.ok) break;
+        if (body.error !== 'name_conflict') throw new Error(body.message ?? 'Could not create the Word document');
+        if (n === 20) throw new Error('Too many copies with this name already exist');
+      }
+      toast.push('success', `Created “${body.name}” from your Markdown`);
+      nav(`/open/${body.id}`);
+    } catch (e) { toast.push('error', (e as Error).message); setConverting(false); }
+  };
 
   if (err) return <div className="page"><p className="form-error" role="alert">{err}</p><Link to="/files">Back to My Files</Link></div>;
   if (!d) return <div className="page"><Spinner /></div>;
@@ -47,6 +72,7 @@ export function OpenPage() {
         <KindIcon kind={d.kind} size={32} />
         <div><h1>{d.name}</h1><p className="muted">{KIND_LABEL[d.kind]} · {formatSize(d.size)}</p></div>
         <div className="open-actions">
+          {d.kind === 'text' && /\.(md|markdown)$/i.test(d.name) && <button className="btn btn-primary" disabled={text === null || converting} onClick={openInDocs}>{converting ? 'Converting…' : 'Open in Docs'}</button>}
           <Link className="btn" to={back}>Back to folder</Link>
           <a className="btn btn-primary" href={downloadUrl(d.id)}><IconDownload size={16} /> Download</a>
         </div>
