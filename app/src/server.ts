@@ -14,20 +14,23 @@ import { countUsers, createUser, findByEmail } from './auth/users.ts';
 import { AppError } from './errors.ts';
 import { BlobStore } from './files/blobs.ts';
 import { registerFileRoutes } from './files/routes.ts';
+import { CollabClient } from './collab/client.ts';
+import { registerCollabRoutes } from './collab/routes.ts';
 
 /** Editors served as static bundles under /editors/<name>/. */
 export const EDITORS = ['docs', 'sheets', 'slides', 'pdf'] as const;
 
 // Strict policy for the application itself. Editor bundles (under /editors/) have their own, looser needs.
-const APP_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
-  "font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
+const appCsp = (extraConnect: string) => "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+  `font-src 'self' data:; connect-src 'self' ${extraConnect}; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'`;
 
 export async function buildServer(config: Config, existingDb?: Db): Promise<FastifyInstance> {
   const app = Fastify({ logger: process.env.LOG_LEVEL !== 'silent' && { level: process.env.LOG_LEVEL ?? 'info' }, trustProxy: config.trustProxy, bodyLimit: 256 * 1024 });
   const db = existingDb ?? openDb(config.dbPath, config.migrationsDir);
+  const APP_CSP = appCsp(config.cspConnectExtra);
   const blobs = new BlobStore(config.blobDir, config.tmpDir);
   await blobs.init();
-  app.decorate('ctx', { config, db, blobs });
+  app.decorate('ctx', { config, db, blobs, collab: new CollabClient(config) });
 
   if (config.bootstrapAdmin && !findByEmail(db, config.bootstrapAdmin.email.toLowerCase()) && countUsers(db) === 0) {
     await createUser(db, { ...config.bootstrapAdmin, displayName: 'Administrator', role: 'admin' });
@@ -59,6 +62,7 @@ export async function buildServer(config: Config, existingDb?: Db): Promise<Fast
   app.get('/api/health', async () => ({ ok: true }));
   registerAuthRoutes(app);
   const files = registerFileRoutes(app);
+  registerCollabRoutes(app, files);
   registerAdminRoutes(app, files);
 
   // Editor bundles: each is a self-contained static site served from our own origin.

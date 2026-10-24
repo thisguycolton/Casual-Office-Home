@@ -27,6 +27,12 @@ export interface Config {
   trustProxy: boolean;
   /** Disable only in tests. */
   rateLimit: boolean;
+  /** Extra connect-src origins for the app CSP (development without the proxy only). */
+  cspConnectExtra: string;
+  /** Live co-editing is on only when a signing secret (>= 32 chars) is configured. */
+  collabSecret: string;
+  collabInternalUrl: string;
+  collabTokenTtlMs: number;
 }
 
 function int(env: NodeJS.ProcessEnv, key: string, def: number, min = 0): number {
@@ -75,5 +81,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     bootstrapAdmin: email && password ? { email, password } : null,
     trustProxy: bool(env, 'TRUST_PROXY', true),
     rateLimit: bool(env, 'RATE_LIMIT', true),
+    collabSecret: (env.COLLAB_JWT_SECRET ?? '').length >= 32 ? env.COLLAB_JWT_SECRET! : '',
+    collabInternalUrl: env.COLLAB_INTERNAL_URL ?? 'http://collab:1234',
+    collabTokenTtlMs: int(env, 'COLLAB_TOKEN_TTL_HOURS', 8, 1) * 3600_000,
+    cspConnectExtra: (env.CSP_CONNECT_EXTRA ?? '').replace(/[^A-Za-z0-9:/.\-* ]/g, ''),
   };
 }

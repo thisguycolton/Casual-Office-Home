@@ -1,0 +1,11 @@
+diff --git a/docx-editor/packages/react/src/core-reexport.ts b/docx-editor/packages/react/src/core-reexport.ts
+index 83ee60f..ac2f3d2 100644
+--- a/docx-editor/packages/react/src/core-reexport.ts
++++ b/docx-editor/packages/react/src/core-reexport.ts
+@@ -7,3 +7,6 @@
+  * Users who imported from '@eigenpal/docx-js-editor/core' will continue to work.
+  */
+ export * from '@eigenpal/docx-core';
++
++// Carried patch (casual-office-home): expose the DOCX<->ProseMirror conversion so a host can seed a shared collab room.
++export { toProseDoc, fromProseDoc, schema as proseSchema } from '@eigenpal/docx-core/prosemirror';

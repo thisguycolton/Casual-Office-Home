@@ -41,7 +41,7 @@ export function registerAdminRoutes(app: FastifyInstance, files: FileService): v
     const losesAdmin = r.role === 'admin' && !r.disabled && (role !== 'admin' || disabled);
     if (losesAdmin && admins() <= 1) throw new AppError(409, 'last_admin', 'Cannot remove or disable the last administrator');
     db.prepare('UPDATE users SET role=?, disabled=?, display_name=?, updated_at=? WHERE id=?').run(role, disabled ? 1 : 0, name, Date.now(), r.id);
-    if (disabled) destroyUserSessions(db, r.id);
+    if (disabled) { destroyUserSessions(db, r.id); void app.ctx.collab.kick(null, r.id); }
     audit(db, req.auth!.user.id, 'admin_user_update', r.id, req.ip);
     return view(findById(db, r.id)!);
   });
@@ -50,6 +50,7 @@ export function registerAdminRoutes(app: FastifyInstance, files: FileService): v
     const r = target(req.params.id);
     if (r.id === req.auth!.user.id) throw new AppError(409, 'self_delete', 'You cannot delete your own account here');
     if (r.role === 'admin' && !r.disabled && admins() <= 1) throw new AppError(409, 'last_admin', 'Cannot delete the last administrator');
+    void app.ctx.collab.kick(null, r.id);
     await files.purgeUserFiles(r.id);
     db.prepare('DELETE FROM users WHERE id = ?').run(r.id); // files, sessions, resets cascade
     audit(db, req.auth!.user.id, 'admin_user_delete', r.id, req.ip);

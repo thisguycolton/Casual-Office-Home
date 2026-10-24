@@ -3,9 +3,10 @@ import '@fastify/rate-limit';
 import type { Config } from './config.ts';
 import type { Db } from './db.ts';
 import type { BlobStore } from './files/blobs.ts';
+import type { CollabClient } from './collab/client.ts';
 
 /** Everything handlers need. Built once in server.ts and attached to the Fastify instance. */
-export interface Ctx { config: Config; db: Db; blobs: BlobStore }
+export interface Ctx { config: Config; db: Db; blobs: BlobStore; collab: CollabClient }
 
 export interface User {
   id: string;

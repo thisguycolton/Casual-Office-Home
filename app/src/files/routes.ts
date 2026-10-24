@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { AppError, badRequest } from '../errors.ts';
 import { canInline } from './kinds.ts';
 import { FileService } from './service.ts';
+import { ShareService } from './shares.ts';
 
 function contentDisposition(kind: 'inline' | 'attachment', name: string): string {
   const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
@@ -16,6 +17,7 @@ function contentLength(h: Record<string, unknown>): number | undefined {
 
 export function registerFileRoutes(app: FastifyInstance): FileService {
   const svc = new FileService(app.ctx);
+  const shares = new ShareService(app.ctx, svc);
   const uid = (req: { auth: { user: { id: string } } | null }) => req.auth!.user.id;
   type P = { id: string };
 
@@ -55,7 +57,7 @@ export function registerFileRoutes(app: FastifyInstance): FileService {
   app.post<{ Params: P }>('/api/files/:id/open', async (req) => { svc.touchOpened(uid(req), req.params.id); return { ok: true }; });
 
   app.get<{ Params: P; Querystring: { inline?: string } }>('/api/files/:id/content', async (req, reply: FastifyReply) => {
-    const f = svc.contentFor(uid(req), req.params.id);
+    const f = svc.contentForRead(uid(req), req.params.id).row;
     const inline = req.query.inline === '1' && canInline(f.kind, f.mime);
     reply
       .header('Content-Type', inline ? f.mime : 'application/octet-stream')
@@ -82,6 +84,13 @@ export function registerFileRoutes(app: FastifyInstance): FileService {
     if (!Number.isInteger(v) || v < 1) throw badRequest('invalid_version');
     return svc.restoreVersion(uid(req), req.ip, req.params.id, v);
   });
+
+  app.get<{ Params: P }>('/api/files/:id/shares', async (req) => ({ shares: shares.list(uid(req), req.params.id) }));
+  app.put<{ Params: P }>('/api/files/:id/shares', async (req) => {
+    const b = (req.body ?? {}) as { email?: unknown; role?: unknown };
+    return { shares: await shares.set(uid(req), req.ip, req.params.id, b.email, b.role) };
+  });
+  app.delete<{ Params: P & { userId: string } }>('/api/files/:id/shares/:userId', async (req) => ({ shares: await shares.remove(uid(req), req.ip, req.params.id, req.params.userId) }));
 
   app.delete<{ Params: P }>('/api/files/:id', async (req) => { svc.trash(uid(req), req.ip, req.params.id); return { ok: true }; });
   app.post<{ Params: P }>('/api/files/:id/restore', async (req) => svc.restore(uid(req), req.ip, req.params.id));

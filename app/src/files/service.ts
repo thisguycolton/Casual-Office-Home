@@ -34,6 +34,9 @@ const NEW_TEMPLATES = {
 export type NewKind = keyof typeof NEW_TEMPLATES;
 export const isNewKind = (k: unknown): k is NewKind => typeof k === 'string' && k in NEW_TEMPLATES;
 
+export type Role = 'owner' | 'editor' | 'viewer';
+export interface Access { row: FileRow; role: Role }
+
 export class FileService {
   private readonly ctx: Ctx;
   constructor(ctx: Ctx) { this.ctx = ctx; }
@@ -46,6 +49,24 @@ export class FileService {
     if (!r) throw notFound();
     if (opts.trashed ? r.trashed_at === null : r.trashed_at !== null) throw notFound();
     return r;
+  }
+
+  /**
+   * Who may do what with this file? Owner, a user it is shared with (editor/viewer), or nobody.
+   * Non-owners get 404 for trashed files and folders (sharing is per-file), so existence is never leaked.
+   */
+  access(userId: string, id: string): Access {
+    if (typeof id !== 'string' || id.length > 64) throw notFound();
+    const r = this.db.prepare(
+      `SELECT f.*, s.role AS share_role FROM files f
+       LEFT JOIN file_shares s ON s.file_id = f.id AND s.user_id = ?
+       WHERE f.id = ? AND f.trashed_at IS NULL AND (f.owner_id = ? OR s.user_id IS NOT NULL)`,
+    ).get(userId, id, userId) as (FileRow & { share_role: 'viewer' | 'editor' | null }) | undefined;
+    if (!r) throw notFound();
+    const { share_role, ...row } = r;
+    if (row.owner_id === userId) return { row: row as FileRow, role: 'owner' };
+    if (row.kind === 'folder') throw notFound();
+    return { row: row as FileRow, role: share_role! };
   }
 
   private folder(userId: string, id: string | null): FileRow | null {
@@ -126,8 +147,12 @@ export class FileService {
          ORDER BY trashed_at DESC LIMIT ?`,
       ).all(userId, limit) as unknown as FileRow[];
     } else if (view === 'shared') {
-      rows = []; // Sharing is not implemented: files are private to their owner.
-      extra = { sharingImplemented: false };
+      const shared = this.db.prepare(
+        `SELECT f.*, s.role AS share_role, u.display_name AS owner_name FROM file_shares s
+         JOIN files f ON f.id = s.file_id JOIN users u ON u.id = f.owner_id
+         WHERE s.user_id = ? AND f.trashed_at IS NULL ORDER BY f.updated_at DESC LIMIT ?`,
+      ).all(userId, limit) as unknown as (FileRow & { share_role: 'viewer' | 'editor'; owner_name: string })[];
+      return { items: shared.map((r) => ({ ...toApi({ ...r, parent_id: null, starred: 0 }), role: r.share_role, sharedBy: r.owner_name })) };
     } else if (view === 'folder') {
       const parent = this.parentParam(q.parentId);
       const cur = this.folder(userId, parent);
@@ -143,11 +168,16 @@ export class FileService {
   }
 
   details(userId: string, id: string) {
-    const r = this.get(userId, id);
+    const { row: r, role } = this.access(userId, id);
+    if (role !== 'owner') {
+      // Sharees see the file, never the owner's folder structure or history.
+      const owner = this.db.prepare('SELECT display_name FROM users WHERE id = ?').get(r.owner_id) as { display_name: string };
+      return { ...toApi({ ...r, parent_id: null, starred: 0 }), sha256: r.sha256, path: [], versions: [], role, sharedBy: owner.display_name };
+    }
     const versions = this.db.prepare(
       'SELECT version, size, created_at AS createdAt FROM file_versions WHERE file_id = ? ORDER BY version DESC',
     ).all(id);
-    return { ...toApi(r), sha256: r.sha256, path: this.path(userId, r.parent_id), versions };
+    return { ...toApi(r), sha256: r.sha256, path: this.path(userId, r.parent_id), versions, role };
   }
 
   usage(userId: string) {
@@ -246,14 +276,24 @@ export class FileService {
     return r;
   }
 
+  /** Read access for content: owner or anyone it is shared with. */
+  contentForRead(userId: string, id: string): Access {
+    const a = this.access(userId, id);
+    if (a.row.kind === 'folder' || !a.row.storage_key) throw badRequest('is_folder', 'Folders have no content');
+    return a;
+  }
+
+  /** "Recent" is the owner's own list; opening a file someone shared with you does not change the owner's data. */
   touchOpened(userId: string, id: string) {
-    const r = this.contentFor(userId, id);
-    this.db.prepare('UPDATE files SET last_opened_at = ? WHERE id = ?').run(Date.now(), r.id);
+    const { row, role } = this.contentForRead(userId, id);
+    if (role === 'owner') this.db.prepare('UPDATE files SET last_opened_at = ? WHERE id = ?').run(Date.now(), row.id);
   }
 
   /** Replace content (editor saves). Optimistic concurrency via the file version. Previous content is retained. */
   async writeContent(userId: string, ip: string | undefined, id: string, ifMatch: number, body: NodeJS.ReadableStream, contentLength?: number) {
-    const r = this.contentFor(userId, id);
+    const { row: r, role } = this.contentForRead(userId, id);
+    if (role === 'viewer') throw new AppError(403, 'read_only', 'You have view-only access to this file');
+    const ownerId = r.owner_id; // storage and quota belong to the owner, whoever is saving
     const max = this.ctx.config.maxUploadBytes;
     if (contentLength !== undefined && contentLength > max) throw new AppError(413, 'too_large', 'File exceeds the upload limit');
     if (r.version !== ifMatch) throw new AppError(409, 'version_conflict', `File changed (current version ${r.version})`);
@@ -264,10 +304,10 @@ export class FileService {
       if (rec.size === 0) throw badRequest('empty_body', 'Refusing to replace a file with empty content');
       const c = classify(r.name);
       if (!magicMatches(c.magic, rec.head)) throw new AppError(415, 'type_mismatch', `Content does not look like a .${c.ext} file`);
-      this.assertQuota(userId, rec.size);
+      this.assertQuota(ownerId, rec.size);
       await this.ctx.blobs.commit(rec.tempPath, key);
       const updated = tx(this.db, () => {
-        const cur = this.get(userId, id);
+        const cur = this.get(ownerId, id);
         if (cur.version !== ifMatch) throw new AppError(409, 'version_conflict', `File changed (current version ${cur.version})`);
         const now = Date.now();
         const last = this.db.prepare('SELECT MAX(created_at) t FROM file_versions WHERE file_id = ?').get(id) as { t: number | null };
@@ -284,7 +324,7 @@ export class FileService {
         } else dropKeys.push(cur.storage_key!); // between checkpoints the replaced content is not retained
         this.db.prepare('UPDATE files SET storage_key=?, size=?, sha256=?, version=version+1, updated_at=? WHERE id=?')
           .run(key, rec.size, rec.sha256, now, id);
-        return this.get(userId, id);
+        return this.get(ownerId, id);
       });
       for (const k of dropKeys) await this.ctx.blobs.remove(k).catch(() => {});
       audit(this.db, userId, 'file_save', id, ip);
@@ -349,8 +389,9 @@ export class FileService {
   }
 
   async copy(userId: string, ip: string | undefined, id: string, input: { name?: unknown; parentId?: unknown }) {
-    const src = this.contentFor(userId, id);
-    const parent = input.parentId === undefined ? src.parent_id : this.parentParam(input.parentId);
+    const { row: src, role } = this.contentForRead(userId, id);
+    // Copies always belong to the requester; a sharee's copy lands at their top level unless they choose their own folder.
+    const parent = input.parentId === undefined ? (role === 'owner' ? src.parent_id : null) : this.parentParam(input.parentId);
     this.folder(userId, parent);
     this.assertQuota(userId, src.size);
     const name = input.name === undefined ? numberedName(src.name, 1).replace(/ \(1\)/, ' (copy)') : validateName(input.name);
@@ -377,6 +418,7 @@ export class FileService {
       for (const x of ids) mark.run(now, x === r.id ? 1 : 0, x);
     });
     audit(this.db, userId, 'trash', id, ip);
+    void this.ctx.collab.kick(id); // trashed files are not editable; end any live session
   }
 
   restore(userId: string, ip: string | undefined, id: string) {
@@ -418,6 +460,7 @@ export class FileService {
     });
     for (const k of keys) await this.ctx.blobs.remove(k).catch(() => {});
     audit(this.db, userId, 'delete_permanent', id, ip);
+    void this.ctx.collab.kick(id);
   }
 
   async emptyTrash(userId: string, ip: string | undefined) {
