@@ -28,6 +28,12 @@ services:
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-336}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET:?set COLLAB_JWT_SECRET in .env (openssl rand -hex 32)}
+      COLLAB_INTERNAL_URL: http://collab:1234
+      COLLAB_TOKEN_TTL_HOURS: ${COLLAB_TOKEN_TTL_HOURS:-8}
+    depends_on:
+      collab:
+        condition: service_healthy
     volumes:
       - app-data:/data
     networks: [backend]
@@ -41,6 +47,27 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  collab:
+    build: ./collab
+    image: casual-office-collab:${APP_VERSION:-dev}
+    restart: unless-stopped
+    environment:
+      PORT: "1234"
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET:?set COLLAB_JWT_SECRET in .env (openssl rand -hex 32)}
+      MAX_PAYLOAD_MB: ${COLLAB_MAX_PAYLOAD_MB:-32}
+    # Rooms live in memory only; the file's bytes are owned by the app. Nothing is persisted here.
+    networks: [backend]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1234/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   proxy:
     image: caddy:${CADDY_VERSION}
