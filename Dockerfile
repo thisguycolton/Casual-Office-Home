@@ -64,11 +64,13 @@ COPY app/src ./src
 RUN npm run build && npm prune --omit=dev
 
 FROM node:${NODE_VERSION} AS runtime
-ENV NODE_ENV=production DATA_DIR=/data EDITORS_DIR=/app/editors PUBLIC_DIR=/app/public PORT=3000
+ENV NODE_ENV=production APP_ROOT=/app DATA_DIR=/data PORT=3000
 WORKDIR /app
 COPY --from=app-build /app/node_modules ./node_modules
 COPY --from=app-build /app/dist ./dist
 COPY app/package.json ./
+COPY app/migrations ./migrations
+COPY app/templates ./templates
 COPY app/public ./public
 COPY --from=editor-pdf /src/apps/web/dist ./editors/pdf
 COPY --from=editor-slides /src/apps/web/dist ./editors/slides
