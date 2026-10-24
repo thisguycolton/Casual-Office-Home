@@ -1,0 +1,23 @@
+# Serve the PDFium wasm from our own origin instead of cdn.jsdelivr.net.
+# Absolute URL is required: the engine runs in a blob: worker where relative URLs do not resolve.
+diff --git a/packages/pdf-sdk/src/CasualPdf.tsx b/packages/pdf-sdk/src/CasualPdf.tsx
+index 58c6969..c3d8c8f 100644
+--- a/packages/pdf-sdk/src/CasualPdf.tsx
++++ b/packages/pdf-sdk/src/CasualPdf.tsx
+@@ -145,6 +145,7 @@ function makeVisualOrderEngine(engine: any): any {
+ import { createPluginRegistration } from '@embedpdf/core';
+ import { EmbedPDF } from '@embedpdf/core/react';
+ import { usePdfiumEngine } from '@embedpdf/engines/react';
++import pdfiumWasmUrl from '@embedpdf/pdfium/pdfium.wasm?url';
+ import { ViewportPluginPackage } from '@embedpdf/plugin-viewport/react';
+ import { ScrollPluginPackage } from '@embedpdf/plugin-scroll/react';
+ import { DocumentManagerPluginPackage, DocumentContent } from '@embedpdf/plugin-document-manager/react';
+@@ -199,7 +200,7 @@ function ViewerHost({ isLoaded, loading, children }: { isLoaded: boolean; loadin
+ }
+ 
+ export function CasualPdf({ src, mode = 'view', onModeChange, apiRef, onEdited, onDocumentReplaced, onUndo, onRedo, collab, identity, role, className, style }: CasualPdfProps) {
+-  const { engine, isLoading, error } = usePdfiumEngine();
++  const { engine, isLoading, error } = usePdfiumEngine({ wasmUrl: new URL(pdfiumWasmUrl, window.location.href).href });
+   // Clamp the requested mode to what the role permits (defense-in-depth — the
+   // collab server is the real enforcer). A viewer asked to `edit` renders `view`.
+   const effectiveMode = role ? clampMode(mode, role) : mode;

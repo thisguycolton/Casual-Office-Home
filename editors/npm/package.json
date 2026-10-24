@@ -1,0 +1,9 @@
+{
+  "name": "casual-editors-npm",
+  "private": true,
+  "description": "Pins the prebuilt iframe embed bundles of the Docs and Sheets SDKs.",
+  "dependencies": {
+    "@casualoffice/docs": "1.4.2",
+    "@casualoffice/sheets": "0.20.0"
+  }
+}

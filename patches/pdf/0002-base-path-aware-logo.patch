@@ -1,0 +1,32 @@
+# The app hard-codes /logo.svg, which 404s when served under a sub-path (PAGES_BASE).
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index 0dffa09..555fc6b 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -742,7 +742,7 @@ export function App() {
+       <header className="appbar">
+         <div className="appbar__left">
+           <MenuBar menus={menus} />
+-          <img className="appbar__logo" src="/logo.svg" alt="" width={26} height={26} />
++          <img className="appbar__logo" src={`${import.meta.env.BASE_URL}logo.svg`} alt="" width={26} height={26} />
+           <input
+             className="appbar__title"
+             value={title}
+@@ -965,7 +965,7 @@ export function App() {
+           </>
+         ) : (
+           <div className={`welcome${dragOver ? ' welcome--drag' : ''}`} aria-label="Welcome to Casual PDF">
+-            <img src="/logo.svg" alt="" className="welcome__logo" width={56} height={56} />
++            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="welcome__logo" width={56} height={56} />
+             <div className="welcome__hero">
+               <h1 className="welcome__title">Casual PDF</h1>
+               <p className="welcome__sub">High-fidelity PDF viewer &amp; editor</p>
+@@ -1033,7 +1033,7 @@ export function App() {
+       {about && (
+         <div className="dialog__scrim" role="presentation" onClick={() => setAbout(false)}>
+           <div className="dialog" role="dialog" aria-modal="true" aria-label="About Casual PDF" onClick={(e) => e.stopPropagation()}>
+-            <img src="/logo.svg" alt="" width={48} height={48} />
++            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" width={48} height={48} />
+             <h2 className="dialog__title">Casual PDF</h2>
+             <p className="dialog__body">
+               A high-fidelity PDF viewer &amp; editor — one PDFium engine across web and desktop, with annotation,

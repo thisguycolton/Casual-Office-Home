@@ -1,0 +1,29 @@
+# TLS terminates here. SITE_ADDRESS is a hostname (automatic HTTPS) or ":80" for local use.
+{
+	# Never advertise server version.
+	servers {
+		timeouts {
+			read_header 10s
+		}
+	}
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options SAMEORIGIN
+		-Server
+	}
+
+	request_body {
+		max_size {$MAX_UPLOAD_BODY:1GB}
+	}
+
+	reverse_proxy app:3000 {
+		health_uri /api/health
+		health_interval 15s
+	}
+}
