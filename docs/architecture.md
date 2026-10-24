@@ -1,6 +1,6 @@
 # Architecture
 
-Status: **decisions recorded; nothing is built yet** (Phase 1 done, Phase 2 next).
+Status: **Phases 1–3 done** (recon, infrastructure, accounts + file manager). Phase 4 (editor integration) is next.
 Derived from [`phase1-reconnaissance.md`](./phase1-reconnaissance.md) — read it first.
 Evidence tags **[ran] / [src] / [doc]** are defined there.
 
@@ -128,8 +128,8 @@ product makes **no collaboration claim** (acceptance criterion 15).
 | Phase | Deliverable | Gate |
 | --- | --- | --- |
 | 1 | Recon + this document | ✅ |
-| 2 | `compose.yaml`, `.env.example`, Dockerfile(s), health checks, volumes; **all four editor bundles built and served** | Fresh `docker compose up`; data survives recreate; each editor loads over the proxy |
-| 3 | Auth, schema + migrations, files/folders API, uploads, trash/star/search, tests | Cross-user authorization tests pass |
+| 2 | `compose.yaml`, `.env.example`, Dockerfile(s), health checks, volumes; **all four editor bundles built and served** | ✅ Verified: stack up, each editor loads over the proxy, data survives recreate |
+| 3 | Auth, schema + migrations, files/folders API, uploads, trash/star/search, UI, tests | ✅ 44 backend tests incl. cross-user denial; browser journey passes; persistence verified through the proxy |
 | 4 | Editor host pages: Sheets → Docs → PDF → Slides | Create → edit → save → reopen, per type, in a real browser |
 | 5 | UI polish, previews, backup/restore + upgrade docs, troubleshooting | Brief's acceptance list (minus co-editing) |
 | 6 | Co-editing for Docs/Sheets (§5) | Authenticated `/yjs`, two-browser edit test, save-ownership rule |

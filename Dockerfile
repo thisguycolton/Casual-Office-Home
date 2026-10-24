@@ -54,6 +54,15 @@ RUN mkdir -p /out/docs /out/sheets /out/fonts \
     && cp -r node_modules/@casualoffice/docs/dist/fonts/. /out/fonts/ \
     && cp -r node_modules/@casualoffice/sheets/dist/embed/. /out/sheets/
 
+# ───────── Central web UI ─────────
+FROM node:${NODE_VERSION} AS web-build
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/tsconfig.json web/vite.config.ts web/index.html ./
+COPY web/src ./src
+RUN npm run build
+
 # ───────── Central app ─────────
 FROM node:${NODE_VERSION} AS app-build
 WORKDIR /app
@@ -71,7 +80,7 @@ COPY --from=app-build /app/dist ./dist
 COPY app/package.json ./
 COPY app/migrations ./migrations
 COPY app/templates ./templates
-COPY app/public ./public
+COPY --from=web-build /web/dist ./public
 COPY --from=editor-pdf /src/apps/web/dist ./editors/pdf
 COPY --from=editor-slides /src/apps/web/dist ./editors/slides
 COPY --from=editor-npm /out/docs ./editors/docs

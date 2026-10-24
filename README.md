@@ -3,10 +3,11 @@
 A private, self-hosted alternative to Google Workspace built around four open-source
 CasualOffice editors (Docs, Sheets, Slides, PDF) behind one login and one file manager.
 
-**Status: Phase 2 (infrastructure) complete.** The stack builds and runs, and all four editors
-are served through the reverse proxy. The file manager, login and editor integration are
-**not built yet** (Phases 3–4); `/` is a placeholder page. Single sign-on, collaborative editing
-and cross-format compatibility are **not** claimed until verified.
+**Status: Phase 3 (accounts + file manager) complete.** You can sign in, create folders, upload,
+rename, move, star, trash/restore, search, sort and browse files in a Google-Drive-style UI.
+**Editors are not connected yet (Phase 4):** opening a document/spreadsheet/presentation/PDF shows
+a preview page with a download button, and says so. Single sign-on, collaborative editing and
+cross-format compatibility are **not** claimed until verified.
 
 - [`docs/phase1-reconnaissance.md`](docs/phase1-reconnaissance.md) — what the upstream projects really do, and their defects.
 - [`docs/architecture.md`](docs/architecture.md) — decisions, topology, per-editor integration contract, phases.
@@ -22,6 +23,17 @@ docker compose --env-file .env --env-file editors/pins.env up -d --build   # bui
 docker compose --env-file .env --env-file editors/pins.env ps              # health
 docker compose --env-file .env --env-file editors/pins.env down             # stop (data kept)
 ```
+
+### First sign-in
+Set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` (≥12 chars) in `.env` before the first start,
+then **remove the password from `.env`** afterwards. Or, with the stack running:
+```sh
+printf '%s' 'a long passphrase' | docker compose --env-file .env --env-file editors/pins.env exec -T app node dist/cli.js create-admin you@example.com
+```
+Public registration is **off** (`ALLOW_REGISTRATION=false`); admins add users under *Administration*.
+There is no email service: to reset a password an admin generates a one-time link for the user
+(or run `... exec -T app node dist/cli.js reset-password user@example.com` with the password on stdin).
+`SECURE_COOKIES` defaults to `true`; set it to `false` only for plain-HTTP testing on a non-localhost address.
 
 Local test: leave `SITE_ADDRESS=:80`, open `http://localhost`. Production: set
 `SITE_ADDRESS=office.example.com` (DNS pointing at the host, ports 80/443 open) and Caddy obtains
@@ -41,7 +53,27 @@ build** — by design. Data lives in the `app-data` volume and survives rebuilds
 | `patches/pdf/0001` | PDF fetched `pdfium.wasm` from cdn.jsdelivr.net at runtime; serve our bundled copy |
 | `patches/pdf/0002` | PDF hard-coded `/logo.svg`, 404 under a sub-path |
 
-## Known limitations (Phase 2)
+## Develop and test
+```sh
+cd app && npm ci && npm run typecheck && npm test      # 44 tests: auth, CSRF, sessions, files, trash, versions, limits, cross-user denial
+cd web && npm ci && npm run typecheck && npm test && npm run build
+node tests/e2e/ui.cjs                                   # Playwright UI journey against a FRESH running instance (see header comment)
+```
+Backend: Node 22 + Fastify, SQLite (`node:sqlite`, flagged *experimental* by Node — isolated in `app/src/db.ts`),
+migrations in `app/migrations/`, file bytes on the data volume as `blobs/<aa>/<uuid>` (names never touch the filesystem).
+
+## What is enforced on the server
+Argon2id passwords; session tokens stored only as hashes; `HttpOnly` + `SameSite=Lax` (+ `Secure`) cookie; every
+state-changing request needs a same-origin `Origin` **and** the per-session CSRF token; per-account login throttling
+plus per-IP rate limits; every file query is scoped to the owner and returns 404 for anything else (administrators
+cannot read other users' files); uploads are streamed, size/quota-limited, magic-byte checked and cleaned up on failure;
+uploaded content is never rendered inline except images/PDF/text, always with `nosniff` and a sandboxing CSP.
+
+## Known limitations
+- **Shared Files** is a placeholder: there is no sharing feature; files are private to their owner.
+- Dragging a *folder* from the desktop to upload is not supported (drop files, or use Upload).
+- Copy works for files only (not folders). No email: password resets are admin-issued links.
+- Folder moves/renames are not versioned; only file content keeps previous versions (`KEEP_VERSIONS`).
 - Slides and PDF still load **Google Fonts** at runtime (UI/icon fonts). Not private/offline-safe yet.
 - PDF also fetches optional text-edit fonts from jsdelivr on demand.
 - Backup/restore, troubleshooting and upgrade guides arrive in Phase 5.
