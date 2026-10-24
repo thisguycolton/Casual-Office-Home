@@ -54,11 +54,25 @@ RUN mkdir -p /out/docs /out/sheets /out/fonts \
     && cp -r node_modules/@casualoffice/docs/dist/fonts/. /out/fonts/ \
     && cp -r node_modules/@casualoffice/sheets/dist/embed/. /out/sheets/
 
+# ───────── Docs SDK: built from source at a pinned commit + our patches (needed for co-editing) ─────────
+FROM node:${NODE_BUILD_IMAGE} AS docs-sdk
+ARG DOCS_REPO
+ARG DOCS_SHA
+ARG BUN_VERSION=1.4.4
+RUN npm install -g bun@${BUN_VERSION}
+COPY scripts/build-docs-sdk.sh /work/scripts/build-docs-sdk.sh
+COPY patches/docs /work/patches/docs
+RUN printf 'DOCS_REPO=%s\nDOCS_SHA=%s\n' "$DOCS_REPO" "$DOCS_SHA" > /work/pins.env \
+    && mkdir -p /work/editors && cp /work/pins.env /work/editors/pins.env \
+    && /work/scripts/build-docs-sdk.sh /out
+
 # ───────── Central web UI ─────────
 FROM node:${NODE_VERSION} AS web-build
 WORKDIR /web
 COPY web/package.json web/package-lock.json web/.npmrc ./
 RUN npm ci --no-audit --no-fund
+COPY --from=docs-sdk /out/*.tgz /tmp/docs-sdk/
+RUN npm install --no-save --no-package-lock --no-audit --no-fund /tmp/docs-sdk/*.tgz
 COPY web/tsconfig.json web/vite.config.ts web/index.html ./
 COPY web/src ./src
 RUN npm run build

@@ -5,7 +5,9 @@ export interface FileItem {
   starred: boolean; trashedAt: number | null; createdAt: number; updatedAt: number; lastOpenedAt: number | null;
   editor: 'docs' | 'sheets' | 'slides' | 'pdf' | null;
 }
-export interface FileDetails extends FileItem { sha256: string | null; path: { id: string; name: string }[]; versions: { version: number; size: number; createdAt: number }[] }
+export type FileRole = 'owner' | 'editor' | 'viewer';
+export interface FileDetails extends FileItem { role?: FileRole; sharedBy?: string; sha256: string | null; path: { id: string; name: string }[]; versions: { version: number; size: number; createdAt: number }[] }
+export interface CollabGrant { token: string; expiresAt: number; room: string; path: string; role: 'editor' | 'viewer'; version: number }
 export interface Listing { items: FileItem[]; folder?: FileItem | null; path?: { id: string; name: string }[]; sharingImplemented?: boolean }
 
 export class ApiError extends Error {
@@ -63,3 +65,9 @@ export function uploadFile(file: File, parentId: string | null, onProgress: (loa
 
 export const downloadUrl = (id: string) => `/api/files/${id}/content`;
 export const inlineUrl = (id: string) => `/api/files/${id}/content?inline=1`;
+
+/** Room token for live co-editing, or null when the server has co-editing off / the file is not a Docs or Sheets file. */
+export async function fetchCollabGrant(fileId: string): Promise<CollabGrant | null> {
+  try { return await api<CollabGrant>('POST', `/api/files/${fileId}/collab`); }
+  catch (e) { if (e instanceof ApiError && (e.code === 'collab_disabled' || e.code === 'not_collaborative')) return null; throw e; }
+}

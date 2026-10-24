@@ -1,11 +1,37 @@
 diff --git a/docx-editor/packages/react/src/core-reexport.ts b/docx-editor/packages/react/src/core-reexport.ts
-index 83ee60f..ac2f3d2 100644
+index 83ee60f..4ca338c 100644
 --- a/docx-editor/packages/react/src/core-reexport.ts
 +++ b/docx-editor/packages/react/src/core-reexport.ts
-@@ -7,3 +7,6 @@
+@@ -7,3 +7,10 @@
   * Users who imported from '@eigenpal/docx-js-editor/core' will continue to work.
   */
  export * from '@eigenpal/docx-core';
 +
-+// Carried patch (casual-office-home): expose the DOCX<->ProseMirror conversion so a host can seed a shared collab room.
++// Carried patch (casual-office-home): a host that owns persistence (co-editing) must be able to rebuild a .docx from a
++// shared room using the same pieces the editor's own save path uses: DOCX<->ProseMirror conversion, the footnote/endnote
++// text setters, and the comment-reply range-marker injection (Word rejects replies without markers).
 +export { toProseDoc, fromProseDoc, schema as proseSchema } from '@eigenpal/docx-core/prosemirror';
++export { setFootnotePlainText, setEndnotePlainText } from '@eigenpal/docx-core/docx';
++export { injectReplyRangeMarkers, injectTCReplyRangeMarkers } from './hooks/useDocumentSave';
+diff --git a/docx-editor/packages/react/src/hooks/useDocumentSave.ts b/docx-editor/packages/react/src/hooks/useDocumentSave.ts
+index a4c29a2..626b699 100644
+--- a/docx-editor/packages/react/src/hooks/useDocumentSave.ts
++++ b/docx-editor/packages/react/src/hooks/useDocumentSave.ts
+@@ -42,7 +42,7 @@ import type { PagedEditorRef } from '../paged-editor/PagedEditor';
+  * Replies share the parent comment's text range in document.xml.
+  * Without these markers, Pages/Word can't find the reply.
+  */
+-function injectReplyRangeMarkers(content: BlockContent[], comments: Comment[]): void {
++export function injectReplyRangeMarkers(content: BlockContent[], comments: Comment[]): void {
+   const replies = comments.filter((c) => c.parentId != null);
+   if (replies.length === 0) return;
+ 
+@@ -107,7 +107,7 @@ function injectReplyRangeMarkers(content: BlockContent[], comments: Comment[]):
+  * injectReplyRangeMarkers can't find them. This function finds the TC
+  * content nodes and wraps them with comment range markers.
+  */
+-function injectTCReplyRangeMarkers(content: BlockContent[], comments: Comment[]): void {
++export function injectTCReplyRangeMarkers(content: BlockContent[], comments: Comment[]): void {
+   // Find replies whose parentId is a tracked change (not a real comment)
+   const commentIds = new Set(comments.map((c) => c.id));
+   const tcReplies = comments.filter((c) => c.parentId != null && !commentIds.has(c.parentId));

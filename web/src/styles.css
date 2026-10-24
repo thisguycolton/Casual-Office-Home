@@ -160,3 +160,6 @@ td.actions { display: flex; gap: 6px; flex-wrap: wrap; } .badge { padding: 2px 8
 .editor-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: var(--danger-soft); color: var(--text); border-bottom: 1px solid var(--danger); }
 .editor-frame { flex: 1; width: 100%; border: 0; background: #fff; }
 @media (max-width: 600px) { .editor-bar { gap: 8px; padding: 6px 8px; } .save-status { display: none; } }
+
+.editor-live { flex: 1; min-height: 0; position: relative; overflow: auto; background: var(--surface, #fff); }
+.badge { padding: 2px 8px; border-radius: 999px; background: var(--chip, #eef2ff); color: var(--chip-fg, #3730a3); font-size: 12px; font-weight: 600; }

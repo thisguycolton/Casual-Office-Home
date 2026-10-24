@@ -1,0 +1,19 @@
+// Side-effect imports of every Univer plugin stylesheet the Sheets editor can load (eager + lazily-loaded plugins).
+import '@univerjs/design/lib/index.css';
+import '@univerjs/ui/lib/index.css';
+import '@univerjs/docs-ui/lib/index.css';
+import '@univerjs/sheets-ui/lib/index.css';
+import '@univerjs/sheets-formula-ui/lib/index.css';
+import '@univerjs/sheets-numfmt-ui/lib/index.css';
+import '@univerjs/sheets-table-ui/lib/index.css';
+import '@univerjs/sheets-sort-ui/lib/index.css';
+import '@univerjs/sheets-filter-ui/lib/index.css';
+import '@univerjs/sheets-conditional-formatting-ui/lib/index.css';
+import '@univerjs/sheets-data-validation-ui/lib/index.css';
+import '@univerjs/sheets-drawing-ui/lib/index.css';
+import '@univerjs/drawing-ui/lib/index.css';
+import '@univerjs/sheets-hyper-link-ui/lib/index.css';
+import '@univerjs/sheets-note-ui/lib/index.css';
+import '@univerjs/thread-comment-ui/lib/index.css';
+import '@univerjs/sheets-thread-comment-ui/lib/index.css';
+import '@univerjs/find-replace/lib/index.css';

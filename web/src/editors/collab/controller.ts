@@ -41,6 +41,12 @@ export interface RoomOptions {
   debounceMs?: number;
   /** Never save more often than this. */
   minIntervalMs?: number;
+  /**
+   * Editors rewrite a freshly loaded document on their own (normalising ids, attributes…). Treating that as an edit
+   * would re-save every file merely for being opened, so when set, nothing counts as an edit until this client has
+   * actually received input (keyboard, paste, pointer). Peers' edits arrive through their own `dirty` flag.
+   */
+  armOnInput?: Document;
 }
 
 const CTRL = Symbol('room-controller');
@@ -61,8 +67,11 @@ export class RoomController {
   private readonly minIntervalMs: number;
   private readonly onMeta = () => { this.refresh(); this.schedule(); };
   private readonly onAware = () => { this.schedule(); this.refresh(); };
+  private armed = true;
+  private readonly arm = () => { this.armed = true; };
+  private static readonly INPUT = ['keydown', 'beforeinput', 'paste', 'cut', 'drop', 'pointerdown'] as const;
   private readonly onTx = (tr: Y.Transaction) => {
-    if (!this.o.writable || !tr.local || tr.origin === CTRL || this.status !== 'live') return;
+    if (!this.o.writable || !tr.local || tr.origin === CTRL || this.status !== 'live' || !this.armed || tr.changed.size === 0) return;
     // After the transaction: mark the room dirty once (not once per keystroke).
     queueMicrotask(() => { if (!this.disposed && !this.meta.get('dirty')) this.o.doc.transact(() => this.meta.set('dirty', true), CTRL); });
   };
@@ -73,6 +82,7 @@ export class RoomController {
     this.meta = o.doc.getMap('meta');
     this.debounceMs = o.debounceMs ?? 4000;
     this.minIntervalMs = o.minIntervalMs ?? 10_000;
+    if (o.armOnInput) { this.armed = false; for (const t of RoomController.INPUT) o.armOnInput.addEventListener(t, this.arm, true); }
     this.meta.observe(this.onMeta);
     o.awareness.on('change', this.onAware);
     o.doc.on('afterTransaction', this.onTx);
@@ -171,5 +181,6 @@ export class RoomController {
     this.meta.unobserve(this.onMeta);
     this.o.awareness.off('change', this.onAware);
     this.o.doc.off('afterTransaction', this.onTx);
+    if (this.o.armOnInput) for (const t of RoomController.INPUT) this.o.armOnInput.removeEventListener(t, this.arm, true);
   }
 }

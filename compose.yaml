@@ -12,6 +12,8 @@ services:
         PDF_SHA: ${PDF_SHA}
         SLIDES_REPO: ${SLIDES_REPO}
         SLIDES_SHA: ${SLIDES_SHA}
+        DOCS_REPO: ${DOCS_REPO}
+        DOCS_SHA: ${DOCS_SHA}
         NODE_VERSION: ${NODE_VERSION:-22.23.4-alpine}
         NODE_BUILD_IMAGE: ${NODE_BUILD_IMAGE:-22.23.4-bookworm}
     image: casual-office-app:${APP_VERSION:-dev}
