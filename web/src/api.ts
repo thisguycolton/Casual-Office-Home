@@ -4,9 +4,11 @@ export interface FileItem {
   id: string; name: string; kind: Kind; mime: string; parentId: string | null; size: number; version: number;
   starred: boolean; trashedAt: number | null; createdAt: number; updatedAt: number; lastOpenedAt: number | null;
   editor: 'docs' | 'sheets' | 'slides' | 'pdf' | null;
+  /** Present on files someone shared with you. */
+  role?: 'editor' | 'viewer'; sharedBy?: string;
 }
 export type FileRole = 'owner' | 'editor' | 'viewer';
-export interface FileDetails extends FileItem { role?: FileRole; sharedBy?: string; sha256: string | null; path: { id: string; name: string }[]; versions: { version: number; size: number; createdAt: number }[] }
+export interface FileDetails extends Omit<FileItem, 'role'> { role?: FileRole; sha256: string | null; path: { id: string; name: string }[]; versions: { version: number; size: number; createdAt: number }[] }
 export interface CollabGrant { token: string; expiresAt: number; room: string; path: string; role: 'editor' | 'viewer'; version: number }
 export interface Listing { items: FileItem[]; folder?: FileItem | null; path?: { id: string; name: string }[]; sharingImplemented?: boolean }
 

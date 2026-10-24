@@ -127,3 +127,52 @@ export function DetailsPanel({ id, onClose, onChanged }: { id: string; onClose: 
     </aside>
   );
 }
+
+interface ShareRow { userId: string; email: string; displayName: string; role: 'viewer' | 'editor' }
+
+/** Owner-only: who can open this file, and whether they may edit. Access is enforced by the server, not by this dialog. */
+export function ShareDialog({ item, onClose }: { item: FileItem; onClose: () => void }) {
+  const [rows, setRows] = useState<ShareRow[] | null>(null);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'viewer' | 'editor'>('editor');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { api<{ shares: ShareRow[] }>('GET', `/api/files/${item.id}/shares`).then((r) => setRows(r.shares)).catch((e) => setErr(e.message)); }, [item.id]);
+  const act = async (fn: () => Promise<{ shares: ShareRow[] }>) => {
+    setBusy(true); setErr('');
+    try { setRows((await fn()).shares); return true; } catch (x) { setErr((x as Error).message); return false; } finally { setBusy(false); }
+  };
+  const add = async (e: FormEvent) => {
+    e.preventDefault();
+    if (await act(() => api('PUT', `/api/files/${item.id}/shares`, { email: email.trim(), role }))) setEmail('');
+  };
+  return (
+    <Modal title={`Share “${item.name}”`} onClose={onClose}>
+      <form onSubmit={add} className="share-add">
+        <label className="field"><span>Add person (they need an account on this server)</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" autoComplete="off" required />
+        </label>
+        <label className="field"><span>Can</span>
+          <select value={role} onChange={(e) => setRole(e.target.value as 'viewer' | 'editor')}><option value="editor">Edit</option><option value="viewer">View only</option></select>
+        </label>
+        <button type="submit" className="btn btn-primary" disabled={busy || !email.trim()}>Share</button>
+      </form>
+      {err && <p className="form-error" role="alert">{err}</p>}
+      {rows === null ? <Spinner /> : rows.length === 0 ? <p className="muted">Only you can open this file.</p> : (
+        <ul className="share-list">
+          {rows.map((r) => (
+            <li key={r.userId}>
+              <span><strong>{r.displayName}</strong> <span className="muted">{r.email}</span></span>
+              <select aria-label={`Access for ${r.email}`} value={r.role} disabled={busy}
+                onChange={(e) => void act(() => api('PUT', `/api/files/${item.id}/shares`, { email: r.email, role: e.target.value }))}>
+                <option value="editor">Can edit</option><option value="viewer">View only</option>
+              </select>
+              <button type="button" className="btn" disabled={busy} onClick={() => void act(() => api('DELETE', `/api/files/${item.id}/shares/${r.userId}`))}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="modal-actions"><button type="button" className="btn" onClick={onClose}>Done</button></div>
+    </Modal>
+  );
+}

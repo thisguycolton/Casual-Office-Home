@@ -22,7 +22,7 @@ type AnyComment = { id: number } & Record<string, unknown>;
  * stored file and replaces only what the room owns — body, comments, footnote/endnote text — then repacks, the same
  * pieces and order the editor's single-user save uses.
  */
-export function DocsRoom({ fileId, fileName, grant, userName, userId, onStatus, onHandle }: RoomProps) {
+export function DocsRoom({ fileId, fileName, grant, userName, userId, onStatus, onHandle, onShare }: RoomProps) {
   const writable = grant.role === 'editor';
   const storage = useMemo(() => apiRoomStorage(fileId), [fileId]);
   const ctl = useRef<RoomController | null>(null);
@@ -101,7 +101,7 @@ export function DocsRoom({ fileId, fileName, grant, userName, userId, onStatus, 
       fileSource={fileSource as never} docId={fileId}
       documentMode={writable ? 'editing' : 'viewing'}
       collab={{ server: collabSocketUrl(grant.path), room: grant.room, token: grant.token, user: { name: userName, color: colorFor(userId) } }}
-      onCollabState={onCollabState}
+      onCollabState={onCollabState} onShare={onShare ?? (() => {})}
     />
   );
 }

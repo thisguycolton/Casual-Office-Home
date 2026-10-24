@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Link, useNavigate } from 'react-router-dom';
 import { downloadUrl, fetchCollabGrant, getCsrf, type CollabGrant, type FileDetails } from '../api.ts';
 import { useAuth } from '../auth.tsx';
+import { ShareDialog } from '../components/Dialogs.tsx';
 import { KindIcon } from '../components/icons.tsx';
 import { useToast } from '../components/ui.tsx';
 import { EditorSession, type SaveState } from './session.ts';
@@ -10,7 +11,6 @@ import type { RoomStatus } from './collab/controller.ts';
 
 // The full editors are large (Univer, ProseMirror, ExcelJS); only load the one a file needs.
 const DocsRoom = lazy(() => import('./DocsRoom.tsx').then((m) => ({ default: m.DocsRoom })));
-const SheetsRoom = lazy(() => import('./SheetsRoom.tsx').then((m) => ({ default: m.SheetsRoom })));
 
 const STATUS: Record<SaveState, string> = {
   loading: 'Opening…', ready: 'Ready', saving: 'Saving…', saved: 'All changes saved', error: 'Couldn’t save — will retry', conflict: 'Not saved — file changed elsewhere', 'failed-to-load': 'Couldn’t open this file',
@@ -42,7 +42,7 @@ const LIVE_STATUS: Record<RoomStatus, string> = {
   offline: 'Offline — reconnecting…', conflict: 'Not saved — file changed elsewhere', error: 'Couldn’t open this file',
 };
 
-/** Full-screen chrome around a live co-editing room (Docs or Sheets). */
+/** Full-screen chrome around a live co-editing room (Docs). */
 function LiveEditor({ file, grant }: { file: FileDetails; grant: CollabGrant }) {
   const nav = useNavigate();
   const toast = useToast();
@@ -52,6 +52,8 @@ function LiveEditor({ file, grant }: { file: FileDetails; grant: CollabGrant }) 
   const [detail, setDetail] = useState('');
   const [leaving, setLeaving] = useState(false);
   const [staticView, setStaticView] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const isOwner = !file.role || file.role === 'owner';
   const viewer = grant.role === 'viewer';
   const backTo = file.path.length ? `/files/${file.path[file.path.length - 1]!.id}` : '/files';
   const onStatus = useCallback((s: RoomStatus, d?: string) => { setStatus(s); setDetail(d ?? ''); }, []);
@@ -88,7 +90,8 @@ function LiveEditor({ file, grant }: { file: FileDetails; grant: CollabGrant }) 
 
   if (staticView) return <EmbedEditor file={file} readOnly note="Nobody is editing this file right now, so you’re seeing the last saved version." />;
 
-  const props = { fileId: file.id, fileName: file.name, grant, userName: user?.displayName ?? 'Someone', userId: user?.id ?? '', onStatus, onHandle };
+  const props = { fileId: file.id, fileName: file.name, grant, userName: user?.displayName ?? 'Someone', userId: user?.id ?? '', onStatus, onHandle,
+    onShare: () => (isOwner ? setSharing(true) : toast.push('error', 'Only the owner can change who has access')) };
   return (
     <div className="editor-overlay">
       <header className="editor-bar">
@@ -96,6 +99,7 @@ function LiveEditor({ file, grant }: { file: FileDetails; grant: CollabGrant }) 
         <KindIcon kind={file.kind} size={22} />
         <h1 title={file.name}>{file.name}</h1>
         {viewer && <span className="badge">View only</span>}
+        {isOwner && <button className="btn" onClick={() => setSharing(true)}>Share</button>}
         <span className={`save-status s-${status}`} role="status" aria-live="polite">{leaving ? 'Saving before closing…' : LIVE_STATUS[status]}</span>
         <a className="btn" href={downloadUrl(file.id)}>Download</a>
       </header>
@@ -107,9 +111,10 @@ function LiveEditor({ file, grant }: { file: FileDetails; grant: CollabGrant }) 
         </div>
       )}
       {status === 'error' && <div className="editor-banner" role="alert"><strong>{detail || 'This file could not be opened.'}</strong> <a className="btn" href={downloadUrl(file.id)}>Download instead</a></div>}
+      {sharing && <ShareDialog item={file as never} onClose={() => setSharing(false)} />}
       <div className="editor-live">
         <Suspense fallback={<span className="muted">Loading editor…</span>}>
-          {file.editor === 'sheets' ? <SheetsRoom {...props} /> : <DocsRoom {...props} />}
+          <DocsRoom {...props} />
         </Suspense>
       </div>
     </div>

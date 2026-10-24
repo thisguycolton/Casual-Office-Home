@@ -3,12 +3,15 @@
 A private, self-hosted alternative to Google Workspace built around four open-source
 CasualOffice editors (Docs, Sheets, Slides, PDF) behind one login and one file manager.
 
-**Status: Phase 4 in progress — Docs and Sheets are integrated; PDF and Slides are next.** You can sign in, create folders, upload,
-rename, move, star, trash/restore, search, sort and browse files in a Google-Drive-style UI.
-**Documents and spreadsheets open in the embedded Docs and Sheets editors and save back to your file** (see
-[`docs/editors.md`](docs/editors.md) for exactly how, and its limits). **PDF and Slides are not connected yet:** opening them
-shows a preview page with a download button, and says so. Single sign-on, collaborative editing and
-cross-format compatibility are **not** claimed until verified.
+**Status: Drive and Docs are the supported scope right now.** You can sign in, create folders, upload, rename, move, star,
+trash/restore, search, sort, **share files with other users (view or edit)** and browse them in a Google-Drive-style UI.
+**Word documents (.docx) open in a live editor where several people edit together in real time**, and the file is saved back
+for you (verified in a real browser with three people; see [`docs/editors.md`](docs/editors.md) for how and its limits).
+Spreadsheets open in the single-user Sheets editor (live co-editing for Sheets is blocked by an upstream formula bug, documented).
+PDF and Slides are not connected yet: opening them shows a preview page with a download button. Single sign-on and
+cross-format compatibility are **not** claimed.
+
+Setup note: co-editing needs `COLLAB_JWT_SECRET` in `.env` (`openssl rand -hex 32`); compose refuses to start without it.
 
 - [`docs/phase1-reconnaissance.md`](docs/phase1-reconnaissance.md) — what the upstream projects really do, and their defects.
 - [`docs/editors.md`](docs/editors.md) — how each editor saves, what is verified, and its limits.

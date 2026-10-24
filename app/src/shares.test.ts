@@ -150,6 +150,9 @@ describe('sharing', () => {
       const img = (await owner.upload('p.png', Buffer.concat([Buffer.from([0x89]), Buffer.from('PNG\r\n\x1a\n'), Buffer.alloc(8)]))).json;
       assert.equal((await owner.post(`/api/files/${img.id}/collab`)).json.error, 'not_collaborative');
       assert.equal((await owner.post(`/api/files/${file.id}/collab`)).json.error, 'not_collaborative', 'PDF has no collaborative editor here');
+      const xl = await owner.upload('b.xlsx', Buffer.from('PK\x03\x04 xlsx'));
+      assert.equal(xl.status, 201, JSON.stringify(xl.json));
+      assert.equal((await owner.post(`/api/files/${xl.json.id}/collab`)).json.error, 'not_collaborative', 'spreadsheets are single-user until Sheets co-editing is fixed');
       const t2 = await startApp(); const c = await userClient(t2, 'o@example.com');
       try { const d = (await c.post('/api/files/new', { kind: 'document' })).json; const r = await c.post(`/api/files/${d.id}/collab`); assert.equal(r.status, 404); assert.equal(r.json.error, 'collab_disabled'); assert.equal((await c.get('/api/collab/status')).json.enabled, false); }
       finally { await t2.close(); }

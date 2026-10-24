@@ -163,3 +163,8 @@ td.actions { display: flex; gap: 6px; flex-wrap: wrap; } .badge { padding: 2px 8
 
 .editor-live { flex: 1; min-height: 0; position: relative; overflow: auto; background: var(--surface, #fff); }
 .badge { padding: 2px 8px; border-radius: 999px; background: var(--chip, #eef2ff); color: var(--chip-fg, #3730a3); font-size: 12px; font-weight: 600; }
+
+.share-add { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; }
+.share-list { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.share-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.shared-by { font-size: 12px; }

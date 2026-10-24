@@ -1,6 +1,6 @@
 # Architecture
 
-Status: **Phases 1–3 done; Phase 4 in progress** (Docs + Sheets integrated and verified; PDF + Slides next).
+Status: **Phases 1–3 done; Phase 4 in progress.** Drive + Docs (including live co-editing and sharing) verified; Sheets single-user verified; Sheets co-editing, PDF and Slides outstanding.
 Derived from [`phase1-reconnaissance.md`](./phase1-reconnaissance.md) — read it first.
 Evidence tags **[ran] / [src] / [doc]** are defined there.
 
@@ -11,7 +11,7 @@ Evidence tags **[ran] / [src] / [doc]** are defined there.
 | D1 | **Embed the editors; the central app owns all bytes** (not four stock containers) | One origin, one session cookie, one copy of each file, no shared JWT secret |
 | D2 | **Slides and PDF get write-back via small carried build patches** (try to upstream) | We build those two from source at pinned commits and maintain patches |
 | D3 | **Build our own central app** (not Casual Drive/Doc-Hub) | Drive is documents-only, immutable, no Trash/Starred/arbitrary files, no Slides |
-| D4 | **Real-time co-editing for Docs/Sheets is in scope** | ⚠ Conflicts with the verified embed route — see §5. Sequenced as a later phase |
+| D4 | **Real-time co-editing is a must** (scoped by the owner to Drive + Docs first) | Docs: built and verified (§5). Sheets: attempted, blocked by an upstream formula bug. PDF/Slides: not started |
 | D5 | Default stack (not yet confirmed — shout if you disagree): Node 22 + Fastify + React/Vite + SQLite | Two containers, no extra services |
 
 ## 2. Why embed, not stock images (evidence)
@@ -75,7 +75,11 @@ Known build risks (never built by us yet): Slides needs two submodules whose `.g
 SSH URLs (repos are public over https) and installs with `--no-frozen-lockfile`; PDF needs
 its design-system submodule and ships prebuilt WASM artefacts.
 
-## 5. Co-editing (D4) — conflict with the embed route
+## 5. Co-editing (D4)
+
+**Outcome (supersedes the plan below for Docs):** a purpose-built authenticated collab service (`collab/`, internal network), a token-checked `/collab` tunnel in the app, server-arbitrated seeding and single-leader saving (`web/src/editors/collab/controller.ts`), and a Docs host (`DocsRoom.tsx`). The original plan follows for context.
+
+### Original plan
 
 Verified: **neither embed bundle has any collaboration** [ran/src]. Real-time co-editing needs
 the non-embed SDK path (`CasualEditor collab={…}`, `@casualoffice/sheets/collab`) plus the

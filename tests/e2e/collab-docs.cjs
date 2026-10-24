@@ -48,6 +48,11 @@ d.save(sys.argv[1])`;
     await alice.share(file.id, 'carol@example.com', 'viewer');
     step('fixture uploaded and shared (bob: editor, carol: viewer)');
 
+    await bob.page.goto(`${stack.base}/shared`);
+    await bob.page.getByText('plan.docx').first().waitFor({ timeout: 15000 });
+    await bob.page.getByText(/can edit/).first().waitFor();
+    step('the file shows up in Bob’s Shared Files with the owner and his access');
+
     // Alice and Bob open at the same moment: exactly one of them must seed.
     await Promise.all([alice.page.goto(`${stack.base}/open/${file.id}`), bob.page.goto(`${stack.base}/open/${file.id}`)]);
     for (const who of [alice, bob]) await who.page.getByText(/^Live — changes are shared/).waitFor({ timeout: 60000 });
@@ -104,6 +109,7 @@ d.save(sys.argv[1])`;
     if ((body.match(/END-OF-FIXTURE/g) ?? []).length !== 1) throw new Error('fixture text duplicated in stored file');
     step('stored .docx has both edits, no viewer edit, and keeps header/footer/comment/styles/numbering');
 
+    const liveErrors = [alice, bob, carol].map((w) => w.errors.length);
     // Close everything, reopen alone: the room is gone, the file is the truth.
     await alice.page.goto(stack.base + '/'); await bob.page.goto(stack.base + '/'); await carol.page.goto(stack.base + '/');
     await sleep(1500);
@@ -113,7 +119,7 @@ d.save(sys.argv[1])`;
     await alice.page.getByText(/BOB-TOO/).first().waitFor({ timeout: 5000 });
     step('reopened alone: both edits present (loaded from the saved file)');
 
-    for (const who of [alice, bob, carol]) if (who.errors.length) console.log('page errors for', who.email, who.errors.slice(0, 3));
+    [alice, bob, carol].forEach((w, i) => { if (liveErrors[i]) console.log('page errors DURING live editing for', w.email, w.errors.slice(0, liveErrors[i])); if (w.errors.length > liveErrors[i]) console.log('page errors while leaving the editor for', w.email, w.errors.slice(liveErrors[i], liveErrors[i] + 2)); });
     console.log('\nPASS: docs co-editing journey');
   } catch (e) {
     failed = true; console.error('\nFAIL:', e.message); console.error(stack.logs.join('').split('\n').slice(-25).join('\n'));

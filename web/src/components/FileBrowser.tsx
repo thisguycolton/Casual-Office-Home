@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, downloadUrl, type FileItem, type Listing } from '../api.ts';
 import { formatDate, formatSize, KIND_LABEL, openTarget } from '../format.ts';
 import { useUploads } from '../uploads.tsx';
-import { ConfirmDialog, DetailsPanel, MoveDialog, NameDialog } from './Dialogs.tsx';
+import { ConfirmDialog, DetailsPanel, MoveDialog, NameDialog, ShareDialog } from './Dialogs.tsx';
 import {
   IconChevron, IconDownload, IconFolder, IconGrid, IconInfo, IconList, IconMore, IconRestore, IconStar, IconStarFilled, IconTrash, IconUpload, KindIcon,
 } from './icons.tsx';
@@ -23,7 +23,7 @@ const EMPTY_TEXT: Record<BrowserView, { title: string; hint: string }> = {
   recent: { title: 'Nothing opened recently', hint: 'Files you open will show up here.' },
   starred: { title: 'No starred files', hint: 'Star important files to find them quickly.' },
   trash: { title: 'Trash is empty', hint: 'Deleted items stay here until you remove them for good.' },
-  shared: { title: 'Sharing isn’t available yet', hint: 'Files in this suite are private to their owner. There is no sharing feature to show here.' },
+  shared: { title: 'Nothing shared with you', hint: 'Files other people share with you appear here.' },
   search: { title: 'No matching files', hint: 'Search matches file and folder names.' },
 };
 
@@ -38,7 +38,7 @@ export function FileBrowser({ view, folderId = null, search = '', limit, title, 
   const [mode, setMode] = useState<'list' | 'grid'>(() => store.get('mode', 'list', ['list', 'grid'] as const));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [anchorId, setAnchorId] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<null | { kind: 'rename' | 'move' | 'confirm'; items: FileItem[]; confirm?: 'trash' | 'permanent' | 'empty' }>(null);
+  const [dialog, setDialog] = useState<null | { kind: 'rename' | 'move' | 'confirm' | 'share'; items: FileItem[]; confirm?: 'trash' | 'permanent' | 'empty' }>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | 'self' | null>(null);
   const menu = useMenu();
@@ -91,11 +91,16 @@ export function FileBrowser({ view, folderId = null, search = '', limit, title, 
       { label: 'Restore', icon: <IconRestore size={16} />, onSelect: () => run(async () => { for (const i of its) await api('POST', `/api/files/${i.id}/restore`); }, 'Restored') },
       { label: 'Delete forever…', icon: <IconTrash size={16} />, danger: true, onSelect: () => setDialog({ kind: 'confirm', items: its, confirm: 'permanent' }) },
     ];
+    if (view === 'shared') return [
+      { label: 'Open', onSelect: () => open(item), disabled: multi },
+      { label: 'Download', icon: <IconDownload size={16} />, disabled: multi, onSelect: () => { window.location.href = downloadUrl(item.id); } },
+    ];
     return [
       { label: 'Open', onSelect: () => open(item), disabled: multi },
       { label: 'Download', icon: <IconDownload size={16} />, disabled: multi || item.kind === 'folder', onSelect: () => { window.location.href = downloadUrl(item.id); } },
       { separator: true, label: '', onSelect: () => {} },
       { label: its.every((i) => i.starred) ? 'Remove star' : 'Add star', icon: <IconStar size={16} />, onSelect: () => { const s = !its.every((i) => i.starred); run(async () => { for (const i of its) await api('PATCH', `/api/files/${i.id}`, { starred: s }); }); } },
+      { label: 'Share…', disabled: multi || item.kind === 'folder', onSelect: () => setDialog({ kind: 'share', items: [item] }) },
       { label: 'Rename', disabled: multi, onSelect: () => setDialog({ kind: 'rename', items: [item] }) },
       { label: 'Move to…', onSelect: () => setDialog({ kind: 'move', items: its }) },
       { label: 'Make a copy', disabled: multi || item.kind === 'folder', onSelect: () => run(() => api('POST', `/api/files/${item.id}/copy`, {}), 'Copy created') },
@@ -160,6 +165,7 @@ export function FileBrowser({ view, folderId = null, search = '', limit, title, 
   const dialogNode = dialog && (
     dialog.kind === 'rename' ? <NameDialog title="Rename" label="Name" initial={dialog.items[0]!.name} action="Rename" onClose={() => setDialog(null)}
         onSubmit={async (name) => { await api('PATCH', `/api/files/${dialog.items[0]!.id}`, { name }); bump(); }} />
+    : dialog.kind === 'share' ? <ShareDialog item={dialog.items[0]!} onClose={() => { setDialog(null); bump(); }} />
     : dialog.kind === 'move' ? <MoveDialog items={dialog.items} onMoved={() => { toast.push('success', 'Moved'); bump(); }} onClose={() => setDialog(null)} />
     : <ConfirmDialog title={dialog.confirm === 'empty' ? 'Empty trash?' : 'Delete forever?'} danger action={dialog.confirm === 'empty' ? 'Empty trash' : 'Delete forever'}
         body={dialog.confirm === 'empty' ? 'Everything in the trash will be permanently deleted. This cannot be undone.' : `${dialog.items.length === 1 ? `“${dialog.items[0]!.name}”` : `${dialog.items.length} items`} will be permanently deleted. This cannot be undone.`}
@@ -188,6 +194,7 @@ export function FileBrowser({ view, folderId = null, search = '', limit, title, 
           <KindIcon kind={item.kind} />
           {view === 'trash' ? <span className="name">{item.name}</span>
             : <Link className="name" to={openTarget(item)} onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) e.preventDefault(); e.stopPropagation(); }}>{item.name}</Link>}
+          {item.sharedBy && <span className="muted shared-by"> · {item.sharedBy} · {item.role === 'editor' ? 'can edit' : 'view only'}</span>}
           {item.starred && view !== 'trash' && <span className="star-mark" title="Starred"><IconStarFilled size={14} /></span>}
         </div>
         <div role="gridcell" className="c-kind">{KIND_LABEL[item.kind]}</div>

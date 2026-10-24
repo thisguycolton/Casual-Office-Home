@@ -14,4 +14,6 @@ export interface RoomProps {
   userId: string;
   onStatus(s: RoomStatus, detail?: string): void;
   onHandle(h: RoomHandle | null): void;
+  /** The editor's own Share button; the host decides what sharing means. */
+  onShare?(): void;
 }

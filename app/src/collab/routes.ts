@@ -3,7 +3,9 @@ import { AppError, badRequest } from '../errors.ts';
 import type { FileService } from '../files/service.ts';
 
 /** Kinds that have a live-collaboration-capable editor. */
-const COLLAB_KINDS = new Set(['document', 'spreadsheet']);
+// Only Docs has verified live co-editing. Sheets' collaboration bridge corrupts formulas when a second client joins
+// (see docs/editors.md), so spreadsheets stay on the single-user editor until that is fixed.
+const COLLAB_KINDS = new Set(['document']);
 
 export function registerCollabRoutes(app: FastifyInstance, files: FileService): void {
   app.get('/api/collab/status', async () => ({ enabled: app.ctx.collab.enabled }));
