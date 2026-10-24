@@ -1,0 +1,16 @@
+/* Self-hosted replacements for the Google Fonts the editor asks for (blocked by our CSP, and a privacy leak). */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal; font-weight: 100 700; font-display: block;
+  src: url('@fontsource-variable/material-symbols-outlined/files/material-symbols-outlined-latin-full-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+}
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal;
+  text-transform: none; white-space: nowrap; word-wrap: normal; direction: ltr; -webkit-font-feature-settings: 'liga'; font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}

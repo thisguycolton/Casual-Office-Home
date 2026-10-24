@@ -99,7 +99,6 @@ function LiveEditor({ file, grant }: { file: FileDetails; grant: CollabGrant }) 
         <KindIcon kind={file.kind} size={22} />
         <h1 title={file.name}>{file.name}</h1>
         {viewer && <span className="badge">View only</span>}
-        {isOwner && <button className="btn" onClick={() => setSharing(true)}>Share</button>}
         <span className={`save-status s-${status}`} role="status" aria-live="polite">{leaving ? 'Saving before closing…' : LIVE_STATUS[status]}</span>
         <a className="btn" href={downloadUrl(file.id)}>Download</a>
       </header>

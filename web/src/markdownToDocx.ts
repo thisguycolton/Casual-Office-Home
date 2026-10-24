@@ -2,12 +2,13 @@ import { marked, type Token, type Tokens } from 'marked';
 import { Document, ExternalHyperlink, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun, type ParagraphChild } from 'docx';
 
 const HEADINGS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
-type Fmt = { bold?: boolean; italics?: boolean; strike?: boolean; code?: boolean };
+type Fmt = { bold?: boolean; italics?: boolean; strike?: boolean; code?: boolean; size?: number };
+const HEADING_SIZE = [36, 30, 26, 24, 22, 22]; // half-points; explicit because the generated file has no Heading style definitions
 
 function inline(tokens: Token[] | undefined, fmt: Fmt = {}): ParagraphChild[] {
   const out: ParagraphChild[] = [];
   for (const t of tokens ?? []) {
-    const run = (text: string, f: Fmt) => new TextRun({ text, bold: f.bold, italics: f.italics, strike: f.strike, font: f.code ? 'Courier New' : undefined });
+    const run = (text: string, f: Fmt) => new TextRun({ text, bold: f.bold, italics: f.italics, strike: f.strike, size: f.size, font: f.code ? 'Courier New' : undefined });
     switch (t.type) {
       case 'strong': out.push(...inline((t as Tokens.Strong).tokens, { ...fmt, bold: true })); break;
       case 'em': out.push(...inline((t as Tokens.Em).tokens, { ...fmt, italics: true })); break;
@@ -29,7 +30,7 @@ function blocks(tokens: Token[], level = 0, quote = false): Block[] {
   const indent = quote ? { left: 720 } : undefined;
   for (const t of tokens) {
     switch (t.type) {
-      case 'heading': out.push(new Paragraph({ heading: HEADINGS[Math.min((t as Tokens.Heading).depth, 6) - 1], children: inline((t as Tokens.Heading).tokens) })); break;
+      case 'heading': out.push(new Paragraph({ heading: HEADINGS[Math.min((t as Tokens.Heading).depth, 6) - 1], children: inline((t as Tokens.Heading).tokens, { bold: true, size: HEADING_SIZE[Math.min((t as Tokens.Heading).depth, 6) - 1] }), spacing: { before: 240, after: 120 } })); break;
       case 'paragraph': out.push(new Paragraph({ children: inline((t as Tokens.Paragraph).tokens), indent })); break;
       case 'text': out.push(new Paragraph({ children: inline((t as Tokens.Text).tokens ?? [t]), indent })); break;
       case 'code': for (const line of (t as Tokens.Code).text.split('\n')) out.push(new Paragraph({ children: [new TextRun({ text: line, font: 'Courier New' })], indent })); break;

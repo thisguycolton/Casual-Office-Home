@@ -6,6 +6,7 @@ import {
 } from '@casualoffice/docs/core';
 import { prosemirrorToYXmlFragment, yXmlFragmentToProseMirrorRootNode } from 'y-prosemirror';
 import '@casualoffice/docs/styles.css';
+import './fonts.css';
 import { RoomController } from './collab/controller.ts';
 import { apiRoomStorage, collabSocketUrl, colorFor } from './collab/storage.ts';
 import type { RoomProps } from './collab/types.ts';
