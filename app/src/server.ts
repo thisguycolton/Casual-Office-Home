@@ -16,6 +16,7 @@ import { BlobStore } from './files/blobs.ts';
 import { registerFileRoutes } from './files/routes.ts';
 import { CollabClient } from './collab/client.ts';
 import { registerCollabRoutes } from './collab/routes.ts';
+import { registerCollabProxy } from './collab/proxy.ts';
 
 /** Editors served as static bundles under /editors/<name>/. */
 export const EDITORS = ['docs', 'sheets', 'slides', 'pdf'] as const;
@@ -83,6 +84,9 @@ export async function buildServer(config: Config, existingDb?: Db): Promise<Fast
     }
     return reply.code(404).send({ error: 'not_found', message: 'Not found' });
   });
+
+  await app.ready();
+  registerCollabProxy(app);
 
   const timer = setInterval(() => { try { pruneSessions(db); } catch { /* ignore */ } }, 60 * 60_000);
   timer.unref();

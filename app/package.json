@@ -21,7 +21,11 @@
     "fastify": "^5.2.0"
   },
   "devDependencies": {
+    "@hocuspocus/provider": "^2.15.3",
     "@types/node": "^22.10.2",
-    "typescript": "^5.6.3"
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.6.3",
+    "ws": "^8.22.0",
+    "yjs": "^13.6.30"
   }
 }
