@@ -1,0 +1,36 @@
+<!doctype html><meta charset=utf-8><body style="margin:0;display:flex;flex-direction:column;height:100vh">
+<div id=bar style="padding:4px;font:12px monospace;background:#eee">host page · <span id=st>…</span></div>
+<iframe id=f style="flex:1;border:0"></iframe>
+<script type="module" src="/xlsx/bridge.js"></script>
+<script>
+const q=new URLSearchParams(location.search); const app=q.get('app')||'docs', docId=q.get('docId');
+const base=app==='docs'?'/embed/docs/':'/embed/sheets/'; const appKey=app==='docs'?'docs':'sheet';
+const f=document.getElementById('f'); window.__events=[];
+f.src=base+'embed.html?app='+appKey+'&docId='+docId+'&viewMode=editor';
+let helloSent=false; window.__saveNow=()=>f.contentWindow.postMessage({type:'casual.command.save',app:appKey,v:1,data:{}},location.origin);
+function reply(id,type,data,transfer){f.contentWindow.postMessage({type,app:appKey,id,v:1,data},location.origin,transfer||[]);}
+window.addEventListener('message',async ev=>{
+  if(ev.origin!==location.origin||ev.source!==f.contentWindow) return;
+  const m=ev.data; if(!m||typeof m.type!=='string'||!m.type.startsWith('casual.')) return;
+  if(m.type!=='casual.selection.format-state') window.__events.push(m.type); if(m.type==='casual.error') window.__events.push(JSON.stringify(m.data));
+  if((m.type==='casual.hello'||m.type==='casual.ready')&&!helloSent){helloSent=true;f.contentWindow.postMessage({type:'casual.hello',app:appKey,v:1,data:{capabilities:['saveDocument']}},location.origin);}
+  if(m.type==='casual.load.request'){
+    const r=await fetch('/api/files/'+m.data.docId,{credentials:'same-origin'});
+    if(!r.ok){reply(m.id,'casual.load.response',{ok:false,code:r.status===401?'unauthorized':'not_found'});return;}
+    const bytes=await r.arrayBuffer(); reply(m.id,'casual.load.response',{ok:true,bytes,etag:r.headers.get('etag')||undefined,fileName:docId+(app==='docs'?'.docx':'.xlsx')},[bytes]);
+  }
+  if(m.type==='casual.save.request'){
+    const h={'content-type':'application/octet-stream'}; if(m.data.baseEtag) h['if-match']=m.data.baseEtag;
+    const r=await fetch('/api/files/'+m.data.docId,{method:'PUT',headers:h,body:m.data.bytes,credentials:'same-origin'});
+    reply(m.id,'casual.save.response',r.ok?{ok:true,etag:r.headers.get('etag')}:{ok:false,code:r.status===409?'conflict':'save_failed'});
+  }
+  if(m.type==='casual.save.notify'){
+    try{
+      const bytes=await window.__toXlsx(m.data.snapshot);
+      const r=await fetch('/api/files/'+docId,{method:'PUT',headers:{'content-type':'application/octet-stream'},body:bytes,credentials:'same-origin'});
+      window.__events.push('saved:'+r.status+':'+bytes.byteLength);
+    }catch(e){window.__events.push('convert-failed:'+String(e).slice(0,150));}
+  }
+  document.getElementById('st').textContent=window.__events.slice(-4).join(' > ');
+});
+</script>

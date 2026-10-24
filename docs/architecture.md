@@ -1,167 +1,135 @@
-# Architecture proposal (draft — awaiting decisions in §6)
+# Architecture
 
-Status: **proposal.** Nothing here is built yet. It is derived from
-[`phase1-reconnaissance.md`](./phase1-reconnaissance.md); read that first. Evidence tags
-([ran]/[src]/[doc]) are defined there.
+Status: **decisions recorded; nothing is built yet** (Phase 1 done, Phase 2 next).
+Derived from [`phase1-reconnaissance.md`](./phase1-reconnaissance.md) — read it first.
+Evidence tags **[ran] / [src] / [doc]** are defined there.
 
-## 1. Constraints that shape the design
+## 1. Decisions (confirmed with the project owner)
 
-1. **No SSO exists.** No editor supports OIDC, trusted headers or an external IdP. The only
-   hook is a host-minted HS256 JWT on collab's WOPI routes (Docs/Sheets only).
-2. **Only 2 of 4 editors have a usable storage contract.** Docs and Sheets sit on the collab
-   server (WOPI-style GetFile/PutFile). **Slides and PDF have no load/save hook at all.**
-3. **Only 2 of 4 have a published image.** Slides and PDF must be built from source
-   (Slides needs two submodules; PDF is a static SPA with no Dockerfile).
-4. **The published Docs image cannot deep-link a stored file** and cannot write to `/data`
-   as shipped (§4.1 of the recon). Sheets can.
-5. **Collab's live-room layer is unauthenticated** (`/yjs`, `/api/rooms`, `/api/mcp-proxy`).
-   It must never be directly reachable by users.
-6. Upstream's own file manager (Drive) solved the same problem by embedding the editors as
-   **npm SDKs** with a custom `FileSource` — not by launching the stock apps.
-
-## 2. Options considered
-
-### Option A — Stock images + collab/WOPI back end (the "four apps side by side" model)
-Central app mints a JWT per open, redirects the browser to each editor's own origin; bytes
-live in collab's storage (`<fileId>.<ext>`); central app copies bytes in/out.
-
-| + | − |
-| --- | --- |
-| Reuses published images as-is | **Does not work for Docs** (blank editor) [ran] or **Slides/PDF** (no hook / no image) |
-| Sheets round-trips today [ran] | Two copies of every file (central store vs collab store) → sync/conflict problem |
-| | Editors on separate origins → login-less editor tabs; token in URL; `/yjs` etc. must be firewalled |
-| | Shared JWT secret in two processes |
-
-Verdict: **not viable as the whole answer**; it covers only Sheets cleanly.
-
-### Option B — Central app owns the bytes; editors embedded as SDKs / built bundles (recommended)
-One origin, one session cookie. Central app stores every file once. A thin "editor host
-page" per type loads the editor and wires it to central-app endpoints
-`GET /api/files/:id/content` and `PUT /api/files/:id/content` (cookie auth + CSRF +
-ownership check + `If-Match` version). No JWT, no shared secret, no collab server, no
-exposed `/yjs`.
-
-| + | − |
-| --- | --- |
-| Single copy of each file; trash/rename/move/star are pure metadata ops | We must build 4 host pages (but they are small) |
-| Real server-side authorization on every byte read/write | Docs/Sheets via npm SDK versions (`@casualoffice/docs` 1.4.2, `sheets` 0.20.0) — pinned, not "latest" |
-| No unauthenticated collab surface at all | **Slides & PDF still lack a save-back hook** (see §3) |
-| Mirrors upstream Drive's proven approach [src] | **No co-editing** (we'd be honest about it — acceptance criterion 15) |
-| Smaller footprint: no 1.9 GB images for Docs/Sheets | Editor UI bundles built by us → we own build reproducibility |
-
-### Option C — Option B + keep collab for optional co-editing
-Same as B, plus a collab container whose `/yjs` is exposed **only** behind a proxy-level auth
-check. Adds the unauthenticated-surface risk (§4.2/4.3) and a second copy of state. Defer:
-revisit after B works; do not claim co-editing until verified.
-
-## 3. The Slides / PDF problem (needs your decision)
-
-| Approach | Effort | Result |
+| # | Decision | Consequence |
 | --- | --- | --- |
-| **3a. Manual round-trip** (no upstream changes): "Open in Slides" downloads/loads the `.pptx` in the stock app; user exports and re-uploads as a new version | Lowest | Honest but clunky; two-step save; easy to lose edits |
-| **3b. Small carried patch per app** (`patches/*.patch` applied at build): add `?src=` load (PDF already has it) and an `onSave(bytes)` hook posting to our `PUT` endpoint | Medium; patch must be re-based on upgrades | Seamless Open→Edit→Save for all four |
-| **3c. Upstream contribution** of the same hook | Medium + depends on maintainers | Cleanest long-term; slowest |
+| D1 | **Embed the editors; the central app owns all bytes** (not four stock containers) | One origin, one session cookie, one copy of each file, no shared JWT secret |
+| D2 | **Slides and PDF get write-back via small carried build patches** (try to upstream) | We build those two from source at pinned commits and maintain patches |
+| D3 | **Build our own central app** (not Casual Drive/Doc-Hub) | Drive is documents-only, immutable, no Trash/Starred/arbitrary files, no Slides |
+| D4 | **Real-time co-editing for Docs/Sheets is in scope** | ⚠ Conflicts with the verified embed route — see §5. Sequenced as a later phase |
+| D5 | Default stack (not yet confirmed — shout if you disagree): Node 22 + Fastify + React/Vite + SQLite | Two containers, no extra services |
 
-Recommendation: **3b, with 3c attempted**, falling back to 3a per-app if a patch proves
-fragile. PDF is the cheapest (already loads `?src=`; needs only a save hook). Slides needs
-a load hook *and* a save hook.
+## 2. Why embed, not stock images (evidence)
 
-## 4. Proposed topology (Option B)
+- Only Sheets round-trips through the stock image; Docs' image opens a blank doc from a token
+  URL and cannot write to `/data`; Slides/PDF have no image [ran].
+- Both npm packages ship a prebuilt iframe bundle that loads and saves through the *host*
+  via `postMessage`. A proof of concept ([`spikes/embed-poc`](../spikes/embed-poc/README.md))
+  loaded a real `.docx` and `.xlsx` through a cookie-authenticated endpoint, edited them in
+  Chromium, and the stored files contained the edits (and the Sheets formula survived)
+  [ran — recon §7].
+- Upstream's own file manager embeds the same two packages the same way [src].
+- This removes the unauthenticated collab surface (`/yjs`, `/api/rooms`, `/api/mcp-proxy`,
+  `/api/ai`, `/api/admin`) entirely, and removes ~3.9 GB of container images.
+
+## 3. Topology
 
 ```
-Internet ──443──▶ Caddy (TLS, HSTS, only published port; 80→443)
-                    │
-                    └──▶ app (Node + Fastify)         ← single origin
-                          ├─ /            React SPA (file manager)
-                          ├─ /api/*       JSON API: auth, files, folders, search, admin
-                          ├─ /edit/docs   built @casualoffice/docs host page
-                          ├─ /edit/sheets built @casualoffice/sheets host page
-                          ├─ /edit/slides built Slides bundle (patched, §3)
-                          └─ /edit/pdf    built PDF bundle (patched, §3)
+Internet ──443──▶ Caddy (TLS, HSTS; the only published ports 80/443)
+                    └──▶ app  (Node 22 + Fastify)              single origin
+                          /               React SPA — file manager
+                          /api/*          JSON API: auth, files, folders, search, admin
+                          /editors/docs   npm @casualoffice/docs embed bundle (pinned)
+                          /editors/sheets npm @casualoffice/sheets embed bundle (pinned)
+                          /editors/slides Slides build (patched, §4)
+                          /editors/pdf    PDF build (patched, §4)
                           │
-                          ├─ SQLite (better-sqlite3) on volume  ← metadata only
-                          └─ blob store on volume  /data/blobs/<aa>/<uuid>  ← content
+                          ├─ SQLite (WAL) on volume   metadata only
+                          └─ blobs on volume          /data/blobs/<aa>/<uuid>
 ```
 
-- **Containers: 2** (`proxy`, `app`). No Redis, no collab, no Postgres, no MinIO. The four
-  editors are static bundles served by `app`, not containers. (Requirement "separate
-  containers for the four applications wherever appropriate": for Docs/Sheets/Slides/PDF
-  this is **not** appropriate under Option B because they are client-side apps; we should
-  say so rather than run idle containers.)
-- If you prefer to keep stock Sheets as a container (Option A for Sheets only), it adds a
-  1.96 GB image, a shared secret, a second copy of every `.xlsx`, and a firewalled collab
-  surface — for no capability Option B lacks.
-- **Database:** SQLite (single writer, WAL, volume-backed) fits "small VPS" and avoids a
-  second stateful service. Postgres is a drop-in later if multi-instance is ever needed.
-- **Blob store:** content-addressed by stable UUID (never by filename), atomic
-  write-temp-then-rename, `fsync`, size limit, MIME sniff vs extension, per-user quota hook.
+- **2 containers (`proxy`, `app`).** The editors are client-side static bundles, so the brief's
+  "separate containers for the four applications" is deliberately **not** followed: running
+  four idle containers would add cost and attack surface for no capability. This departure is
+  intentional and should be confirmed.
+- SQLite fits a small VPS and avoids a second stateful service; Postgres is a later drop-in.
+- Editors run in **sandboxed same-origin iframes** served from `/editors/*` with a strict CSP
+  (`frame-ancestors 'self'`); the host page is the only message peer.
 
-### Data model (sketch)
-`users(id, email, password_hash, role, disabled, created_at)` ·
-`files(id uuid, owner_id, parent_id, name, kind, mime, storage_key, size, version, sha256,
-starred, trashed_at, created_at, updated_at, last_opened_at)` — folders are rows with
-`kind='folder'` and null `storage_key` ·
-`sessions` · `password_resets` · `audit_log`. File **versions** are an `If-Match` counter
-plus optional previous-blob retention (a simple "keep last N" policy protects against a bad
-editor save — recommended given upstream round-trip fidelity is partial).
+### 3.1 Per-editor integration contract
 
-### Authentication / authorization
-- Argon2id (or bcrypt) password hashes; server-side sessions in SQLite; `HttpOnly`,
-  `Secure`, `SameSite=Lax` cookie; double-submit CSRF token on mutating routes; login /
-  reset rate limits; registration toggle `ALLOW_REGISTRATION`; first user (or
-  `BOOTSTRAP_ADMIN_*` env) becomes admin; no default passwords.
-- Every file endpoint resolves `owner_id == session.user` (or admin where explicitly
-  allowed) **in the handler**, never in the UI. Deny returns 404 to avoid existence leaks.
-- Editor pages load only from our origin; editor bytes only via the authenticated endpoints.
-- **SSO status: none, and we will not claim it.** One login (to the central app) covers all
-  editors *because they are embedded in it*, not because of identity federation — which is
-  an honest, verifiable property.
+| Editor | Source | Editor → host | Host must |
+| --- | --- | --- | --- |
+| **Docs** | npm `@casualoffice/docs@1.4.2` embed | `.docx` bytes via `save.request` (autosave **30 s**) | Serve `embed-runtime.mjs` under the name `embed.html` imports; serve `dist/fonts/` at `/editors/fonts/`; treat `casual.error` after a successful load as non-fatal; flush on unload is **not possible** (no host save command) → accept ≤30 s loss window or patch (see §4) |
+| **Sheets** | npm `@casualoffice/sheets@0.20.0` embed | Univer snapshot via `save.notify` (only on Ctrl+S / `command.save` / exit) | Poll `command.save` (interval + `pagehide`), convert with `workbookDataToXlsx` (bundle `@univerjs/core@0.25`, `exceljs@4.4.0`, `jszip` + exporter worker), PUT bytes |
+| **Slides** | Build `CasualOffice/slides` at pinned SHA + patch | patch adds `load(src)` + `onSave(bytes)` | Provide authenticated content endpoints |
+| **PDF** | Build `CasualOffice/pdf` at pinned SHA (+ patch) | already loads `?src=`; patch adds `onSave(bytes)` | same |
 
-### Format behaviour (defined, per requirement 3)
-| Kind | Open | Notes |
-| --- | --- | --- |
-| `.docx` | Docs | `.odt/.md/.txt` import via Docs' own converter — stored as-is, converted copies are *new* files, never silent overwrites |
-| `.xlsx` | Sheets | `.ods/.csv/.tsv` same rule |
-| `.pptx` | Slides | Fidelity partial (68/87 probes upstream) — warn on first save |
-| `.pdf` | PDF viewer/editor | Edits export a new PDF; original retained as previous version |
-| images / text | Built-in preview | |
-| other | Download only | clear "no editor for this type" panel |
+The host page implements one small `EditorHost` interface (`load`, `save`, `flush`, `dispose`)
+with one adapter per editor, so any editor can be upgraded or replaced in isolation.
 
-Legacy `.doc/.xls/.ppt` are **not** supported by any editor [doc] → download only.
+## 4. Slides / PDF carried patches (D2)
 
-## 5. Security posture
-- Only `proxy` publishes ports (80/443). `app` is `expose`-only on an internal network.
-- Collab is **not deployed** (Option B), eliminating §4.2/4.3 by construction. If Option C is
-  ever adopted: block `/api/mcp-proxy`, `/api/ai`, `/api/admin`, `/api/rooms*`; gate `/yjs`
-  with proxy `forward_auth`.
-- CSP (no inline script except hashed), `frame-ancestors 'none'`, `X-Content-Type-Options`,
-  uploaded content served with `Content-Disposition: attachment` + sandboxed preview origin
-  or strict `sandbox` CSP to prevent stored XSS from SVG/HTML uploads.
-- Docker: non-root user, read-only root FS where possible, `no-new-privileges`, healthchecks,
-  pinned image tags (never `:latest`), `restart: unless-stopped`, resource limits.
-- Secrets only via `.env` (git-ignored) / Docker secrets; `.env.example` has none.
+Patches live in `patches/<app>/*.patch`, applied by the editor Dockerfile stage against a
+**pinned commit**; a CI check fails if a patch no longer applies. Minimum surface:
+`?src=<same-origin-url>` (load) and a `postMessage`/callback `save(bytes)` hook, mirroring the
+Docs/Sheets envelope so all four share one host protocol. Upstream PRs are attempted in
+parallel. Fallback per app if a patch proves fragile: manual export → re-upload as a new
+version (documented, not hidden).
+Known build risks (never built by us yet): Slides needs two submodules whose `.gitmodules` use
+SSH URLs (repos are public over https) and installs with `--no-frozen-lockfile`; PDF needs
+its design-system submodule and ships prebuilt WASM artefacts.
 
-## 6. Decisions needed
+## 5. Co-editing (D4) — conflict with the embed route
 
-1. **Integration model** — Option B (recommended) vs A (Sheets as stock container) vs C.
-2. **Slides/PDF write-back** — 3a manual, 3b carried patches (recommended), or 3c upstream-only.
-3. **Co-editing** — out of scope for v1 (recommended; we make no claim), or in scope
-   (requires Option C and an authenticated `/yjs`).
-4. **Adopt vs build** — build our own central app as specified (recommended: Drive is
-   documents-only, immutable, no Trash/Starred/arbitrary files, no Slides), or evaluate
-   adopting/forking Casual Drive.
-5. **Stack default** — Node 22 + Fastify + React/Vite + SQLite (proposed; say if you prefer
-   Postgres, or another language).
+Verified: **neither embed bundle has any collaboration** [ran/src]. Real-time co-editing needs
+the non-embed SDK path (`CasualEditor collab={…}`, `@casualoffice/sheets/collab`) plus the
+Hocuspocus/Yjs collab server, which today is unauthenticated at `/yjs` (any client that names
+a room can join; `?role=edit` grants write) [src]. Delivering it safely requires:
 
-## 7. Phases (unchanged from the brief, now with entry gates)
+1. A carried patch to `collab` so `onAuthenticate` verifies a per-file, short-lived JWT minted
+   by our app (and binds `documentName` to the token's `file_id`) — URL-only checks are not
+   enough because Hocuspocus carries the room name inside the protocol, not the URL.
+2. Collab on an internal-only network; `/yjs` reachable only through our authenticated proxy;
+   `/api/mcp-proxy`, `/api/ai`, `/api/admin`, `/api/rooms*` not routed.
+3. A single-writer rule for persisting `.docx/.xlsx` bytes from a live room (otherwise every
+   client autosaves and the last writer wins), plus conflict handling with `If-Match`.
+4. A rebuilt host page using the full SDK (≈40 Univer peer deps for Sheets) instead of the
+   prebuilt embed bundle.
+
+**Sequencing:** ship single-editor Docs/Sheets via the verified embed route first
+(Phases 2–5), then co-editing as **Phase 6** with its own gate. Until Phase 6 passes, the
+product makes **no collaboration claim** (acceptance criterion 15).
+
+## 6. Data model, auth, formats
+
+- `users(id, email, password_hash, role, disabled, created_at)` ·
+  `files(id uuid, owner_id, parent_id, name, kind, mime, storage_key, size, version, sha256,
+  starred, trashed_at, created_at, updated_at, last_opened_at)` (folders: `kind='folder'`,
+  null `storage_key`) · `sessions` · `password_resets` · `audit_log`.
+- Content stored by UUID (never by filename), atomic temp-write + rename + fsync, size limit,
+  magic-byte vs extension check. Keep the last *N* blob versions per file: upstream
+  round-trips are lossy for complex files, so a bad save must be recoverable.
+- **Auth:** Argon2id; server-side sessions; `HttpOnly; Secure; SameSite=Lax` cookie; CSRF
+  token on mutating routes; login/reset rate limits; `ALLOW_REGISTRATION` toggle; first
+  user or `BOOTSTRAP_ADMIN_*` becomes admin; no default passwords. Every file handler checks
+  `owner_id` server-side; other users' files return 404.
+- **SSO:** none exists in any editor, and none is claimed. One login covers all editors
+  because they are embedded in our origin — not because of identity federation.
+- **Formats:** `.docx`→Docs, `.xlsx`→Sheets, `.pptx`→Slides, `.pdf`→PDF, images/text→
+  built-in preview, everything else (incl. legacy `.doc/.xls/.ppt`)→download-only panel.
+  Format conversions (e.g. `.odt`, `.csv`) create a **new** file; never overwrite silently.
+  Slides fidelity is partial upstream (68/87 probes) → warn before first save.
+
+## 7. Security posture
+- Only `proxy` publishes ports. `app` is internal. Pinned image tags; non-root; `no-new-privileges`;
+  healthchecks; `restart: unless-stopped`; resource limits.
+- CSP, `frame-ancestors`, `nosniff`; uploads served `Content-Disposition: attachment`, and
+  previews sandboxed (SVG/HTML upload ⇒ stored-XSS vector).
+- Secrets only via `.env` / Docker secrets; `.env.example` has none.
+
+## 8. Phases and gates
 
 | Phase | Deliverable | Gate |
 | --- | --- | --- |
-| 1 | Recon + this document | ✅ done, pending decisions above |
-| 2 | `compose.yaml` (proxy + app), `.env.example`, health checks, volumes; editors built as static bundles | Fresh `docker compose up`; data survives recreate; **prove each editor bundle builds** |
-| 3 | Auth, schema + migrations, file/folder API, uploads, trash/star/search, tests | Authz tests incl. cross-user denial |
-| 4 | Editor host pages one at a time: Sheets → Docs → PDF → Slides | Create → edit → save → reopen, per type, in a real browser |
-| 5 | UI polish, previews, backup/restore + upgrade docs, troubleshooting | Acceptance list from the brief |
-
-Build risk is front-loaded into Phase 2: Slides (submodules, non-frozen lockfile, large
-Univer fork) and PDF (Rust→WASM artefacts) have **never been built by us**.
+| 1 | Recon + this document | ✅ |
+| 2 | `compose.yaml`, `.env.example`, Dockerfile(s), health checks, volumes; **all four editor bundles built and served** | Fresh `docker compose up`; data survives recreate; each editor loads over the proxy |
+| 3 | Auth, schema + migrations, files/folders API, uploads, trash/star/search, tests | Cross-user authorization tests pass |
+| 4 | Editor host pages: Sheets → Docs → PDF → Slides | Create → edit → save → reopen, per type, in a real browser |
+| 5 | UI polish, previews, backup/restore + upgrade docs, troubleshooting | Brief's acceptance list (minus co-editing) |
+| 6 | Co-editing for Docs/Sheets (§5) | Authenticated `/yjs`, two-browser edit test, save-ownership rule |

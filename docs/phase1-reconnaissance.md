@@ -40,6 +40,7 @@ the WOPI endpoints were exercised with curl, and the editors were driven in head
 | Server-side persistence by itself | Via collab host (`local`/`s3`/`postgres`) [ran, with bug §4.1] | Via collab host [ran] | **None** — in-memory relay only [src] | **None** [src] |
 | Open a stored file from a token URL | **Does not work in the image** — opens blank "Untitled" [ran] | **Works**, but user must click "Open" on a banner [ran] | No mechanism [src] | `?src=<url>` fetches a PDF [src] |
 | Save back to a host | Possible via SDK `FileSource` [src]; not wired in the image [ran] | **Works** — Ctrl+S → `POST /wopi/files/:id/contents` [ran] | No mechanism [src] | No — "Download changes" only [src] |
+| Host-owned load/save via npm iframe embed (§7) | **Works** — bytes over `postMessage`, autosave 30 s [ran] | **Works** — snapshot over `postMessage`, host converts to `.xlsx` [ran] | Not available | Not available |
 | JWT / WOPI host surface | Yes (collab) [ran] | Yes (collab) [ran] | No [src] | No [src] |
 | OIDC / SSO / trusted-header auth | **None** [src] | **None** (OIDC/SAML config is a stub) [doc] | None | None |
 | Real-time co-editing | Yes, in image [doc]; not tested | Yes, in image [doc]; not tested | Spike only, single-active-editor [doc] | Planned, via collab [doc] |
@@ -180,7 +181,47 @@ enforce authentication itself and treat the editors as untrusted-by-default back
 ## 6. What was NOT verified
 - Whether any of the Slides / PDF builds succeed (not attempted).
 - Co-editing in any app; `/yjs` exposure (§4.2) with a live WS client.
-- Sheets autosave-without-Ctrl+S; xlsx/docx fidelity round-trips.
+- Fidelity round-trips beyond one trivial `.docx` and one trivial `.xlsx`.
+- Second and later saves in the Docs embed (only the first save was observed).
 - PDF app runtime behaviour; the extent to which its feature list is real.
 - Docs behaviour at repo HEAD (`77e9530`) vs the published 0.0.5 image — they differ
   (image is from 2026-07-07, HEAD from 2026-09-20). A source build might deep-link correctly.
+
+## 7. Embed-route proof of concept  (all **[ran]**, Chromium via Playwright)
+
+Both npm packages ship a prebuilt iframe bundle (`dist/embed/embed.html` + runtime) that
+speaks a `postMessage` protocol (`casual.hello/ready`, `casual.load.request`,
+`casual.save.request`, `casual.command.*`). A throwaway host (see
+[`spikes/embed-poc`](../spikes/embed-poc/README.md)) served the bundles from its own origin and
+answered `load`/`save` from a cookie-guarded `GET/PUT /api/files/:id`.
+
+| Check | `@casualoffice/docs@1.4.2` | `@casualoffice/sheets@0.20.0` |
+| --- | --- | --- |
+| Opens a stored file via host (no token, no collab server) | ✅ real `.docx` rendered | ✅ real `.xlsx` rendered |
+| Host auth failure handled | ✅ editor shows "load failed: unauthorized"; host got 401 | not exercised |
+| Edit persists to stored file | ✅ typed text present in saved `document.xml` | ✅ typed value **and** formula `B1+1` present |
+| How a save is triggered | **Autosave only, every 30 s while dirty** (`autosaveInterval = 3e4`). Host has **no** save command (`onCommandSave` is not registered) | Ctrl+S inside iframe, host `casual.command.save`, or exit. **No autosave/dirty signal** |
+| What the editor sends on save | `.docx` **bytes** (`casual.save.request`, host replies with etag) | A Univer **snapshot (JSON)** via `casual.save.notify`; host must convert |
+| Bytes → stored format | none needed | host must call `workbookDataToXlsx` from `@casualoffice/sheets/xlsx` (needs `@univerjs/core@0.25`, `exceljs@4.4.0`, `jszip`, and the `exporter.worker.js` served next to the module) — **works**, 0.9 MB bridge + 2.4 MB worker |
+| Bundle size | 3.0 MB (+ fonts) | 25 MB |
+| Real-time co-editing inside the embed | **No** — runtime comment: "No collab inside the iframe" | **No** — none wired in runtime |
+
+### 7.1 Defects found in the shipped packages (need a workaround or upstream fix)
+1. **Docs 1.4.2 `embed.html` imports `./embed-runtime.js`; the package ships `embed-runtime.mjs`.**
+   Served as-is it 404s. We must rename/alias the file.
+2. **Docs fonts 404.** The runtime requests `/embed/fonts/*.woff2`; the files ship in a sibling
+   `dist/fonts/`. They must be served at that path.
+3. **Docs emits `casual.error {code:"parse_failed", "Cannot perform Construct on a detached
+   ArrayBuffer"}` right after the first save.** The editor keeps working and the data **was**
+   saved, so it is non-fatal — but a host that tears down the iframe on any `casual.error`
+   would wrongly destroy a working editor. Cause: the save buffer is in the postMessage
+   transfer list and is then reused (inferred from the message, not root-caused).
+4. **Docs loses up to 30 s of edits** if the tab closes between autosaves; there is no
+   host-side flush. Sheets has no autosave at all — the host must poll `command.save`
+   and flush on `visibilitychange`/`pagehide`.
+5. **Trust boundary:** the editor decides the host origin from `document.referrer`
+   (Docs) — hosting the iframe same-origin keeps this safe; a `Referrer-Policy: no-referrer`
+   header would silently break the handshake.
+6. The saved `.docx` re-serialises (parts preserved for the sample; one `docProps/core.xml`
+   added; compression differs). Only a trivial document was tested, so **fidelity for
+   complex documents is unknown**.

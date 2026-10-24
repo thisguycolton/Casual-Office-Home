@@ -1,0 +1,12 @@
+{
+  "name": "embed-poc-bridge",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@casualoffice/sheets": "0.20.0",
+    "@univerjs/core": "0.25.0",
+    "exceljs": "4.4.0",
+    "jszip": "3.10.2"
+  },
+  "devDependencies": { "esbuild": "0.28.2" }
+}
