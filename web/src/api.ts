@@ -15,6 +15,7 @@ export class ApiError extends Error {
 
 let csrf = '';
 export const setCsrf = (t: string) => { csrf = t; };
+export const getCsrf = () => csrf;
 let onUnauthenticated: () => void = () => {};
 export const setUnauthenticatedHandler = (fn: () => void) => { onUnauthenticated = fn; };
 

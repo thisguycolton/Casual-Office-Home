@@ -3,13 +3,15 @@
 A private, self-hosted alternative to Google Workspace built around four open-source
 CasualOffice editors (Docs, Sheets, Slides, PDF) behind one login and one file manager.
 
-**Status: Phase 3 (accounts + file manager) complete.** You can sign in, create folders, upload,
+**Status: Phase 4 in progress — Docs and Sheets are integrated; PDF and Slides are next.** You can sign in, create folders, upload,
 rename, move, star, trash/restore, search, sort and browse files in a Google-Drive-style UI.
-**Editors are not connected yet (Phase 4):** opening a document/spreadsheet/presentation/PDF shows
-a preview page with a download button, and says so. Single sign-on, collaborative editing and
+**Documents and spreadsheets open in the embedded Docs and Sheets editors and save back to your file** (see
+[`docs/editors.md`](docs/editors.md) for exactly how, and its limits). **PDF and Slides are not connected yet:** opening them
+shows a preview page with a download button, and says so. Single sign-on, collaborative editing and
 cross-format compatibility are **not** claimed until verified.
 
 - [`docs/phase1-reconnaissance.md`](docs/phase1-reconnaissance.md) — what the upstream projects really do, and their defects.
+- [`docs/editors.md`](docs/editors.md) — how each editor saves, what is verified, and its limits.
 - [`docs/architecture.md`](docs/architecture.md) — decisions, topology, per-editor integration contract, phases.
 - [`spikes/embed-poc`](spikes/embed-poc/README.md) — reproducible proof of the Docs/Sheets embed route.
 
@@ -55,9 +57,10 @@ build** — by design. Data lives in the `app-data` volume and survives rebuilds
 
 ## Develop and test
 ```sh
-cd app && npm ci && npm run typecheck && npm test      # 44 tests: auth, CSRF, sessions, files, trash, versions, limits, cross-user denial
+cd app && npm ci && npm run typecheck && npm test      # 45 tests: auth, CSRF, sessions, files, trash, versions, limits, cross-user denial
 cd web && npm ci && npm run typecheck && npm test && npm run build
 node tests/e2e/ui.cjs                                   # Playwright UI journey against a FRESH running instance (see header comment)
+node tests/e2e/editors.cjs                              # create → edit → save → verify bytes → reopen → conflict, for Docs and Sheets (~3 min)
 ```
 Backend: Node 22 + Fastify, SQLite (`node:sqlite`, flagged *experimental* by Node — isolated in `app/src/db.ts`),
 migrations in `app/migrations/`, file bytes on the data volume as `blobs/<aa>/<uuid>` (names never touch the filesystem).
@@ -74,7 +77,7 @@ uploaded content is never rendered inline except images/PDF/text, always with `n
 - Dragging a *folder* from the desktop to upload is not supported (drop files, or use Upload).
 - Copy works for files only (not folders). No email: password resets are admin-issued links.
 - Folder moves/renames are not versioned; only file content keeps previous versions (`KEEP_VERSIONS`).
-- Slides and PDF still load **Google Fonts** at runtime (UI/icon fonts). Not private/offline-safe yet.
+- All four editors still load **Google Fonts** at runtime (UI/icon fonts). Not private/offline-safe yet.
 - PDF also fetches optional text-edit fonts from jsdelivr on demand.
 - Backup/restore, troubleshooting and upgrade guides arrive in Phase 5.
 - Tags `22.23.4-*` (Node) in the Dockerfile were not pulled during development (registry rate

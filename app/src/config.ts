@@ -18,6 +18,8 @@ export interface Config {
   /** 0 = unlimited. */
   userQuotaBytes: number;
   keepVersions: number;
+  /** Minimum minutes between retained version checkpoints (autosaving editors save far more often). 0 = every save. */
+  versionIntervalMs: number;
   sessionTtlMs: number;
   secureCookies: boolean;
   allowRegistration: boolean;
@@ -66,6 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxUploadBytes: int(env, 'MAX_UPLOAD_MB', 500, 1) * 1024 * 1024,
     userQuotaBytes: int(env, 'USER_QUOTA_MB', 0, 0) * 1024 * 1024,
     keepVersions: int(env, 'KEEP_VERSIONS', 5, 0),
+    versionIntervalMs: int(env, 'VERSION_INTERVAL_MIN', 10, 0) * 60_000,
     sessionTtlMs: int(env, 'SESSION_TTL_HOURS', 24 * 14, 1) * 3600_000,
     secureCookies: bool(env, 'SECURE_COOKIES', true),
     allowRegistration: bool(env, 'ALLOW_REGISTRATION', false),

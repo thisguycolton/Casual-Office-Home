@@ -57,7 +57,7 @@ RUN mkdir -p /out/docs /out/sheets /out/fonts \
 # ───────── Central web UI ─────────
 FROM node:${NODE_VERSION} AS web-build
 WORKDIR /web
-COPY web/package.json web/package-lock.json ./
+COPY web/package.json web/package-lock.json web/.npmrc ./
 RUN npm ci --no-audit --no-fund
 COPY web/tsconfig.json web/vite.config.ts web/index.html ./
 COPY web/src ./src

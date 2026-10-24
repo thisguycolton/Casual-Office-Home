@@ -41,7 +41,7 @@ const step = (m) => console.log('•', m);
   await p.getByRole('button', { name: 'New', exact: true }).first().click(); await p.getByRole('menuitem', { name: 'New spreadsheet' }).click();
   await p.waitForURL(/\/open\//); step('new spreadsheet created and opened: ' + await p.locator('h1').innerText());
   await p.screenshot({ path: require('os').tmpdir() + '/e2e-open.png' });
-  await p.getByRole('link', { name: 'Back to folder' }).click(); await p.waitForURL(/\/files\/[0-9a-f-]{36}$/); step('returned to the same folder: ' + p.url().replace(base, ''));
+  await p.getByRole('link', { name: '← Back' }).click(); await p.waitForURL(/\/files\/[0-9a-f-]{36}$/); step('returned to the same folder: ' + p.url().replace(base, ''));
 
   // rename via context menu
   await p.getByRole('button', { name: 'Actions for notes.txt' }).click(); await p.getByRole('menuitem', { name: 'Rename' }).click();

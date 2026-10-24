@@ -191,7 +191,7 @@ describe('files and folders', () => {
 
 describe('content writes (editor saves) and versions', () => {
   let t: TestApp; let a: Client;
-  before(async () => { t = await startApp({ KEEP_VERSIONS: '2' }); a = await userClient(t, 'a@example.com'); });
+  before(async () => { t = await startApp({ KEEP_VERSIONS: '2', VERSION_INTERVAL_MIN: '0' }); a = await userClient(t, 'a@example.com'); });
   after(() => t.close());
   const put = (id: string, body: Buffer | string, ifMatch?: string) =>
     a.req('PUT', `/api/files/${id}/content`, { raw: Buffer.from(body), headers: ifMatch ? { 'if-match': ifMatch } : {} });
@@ -222,6 +222,25 @@ describe('content writes (editor saves) and versions', () => {
     assert.equal(r.status, 200); assert.equal(r.json.version, 6);
     assert.equal((await a.get(`/api/files/${f.id}/content`)).body.toString().endsWith('rev3'), true);
     assert.equal((await a.post(`/api/files/${f.id}/versions/1/restore`)).status, 404, 'pruned version is gone');
+  });
+
+  it('coalesces rapid autosaves into one retained checkpoint per interval', async () => {
+    const t2 = await startApp({ KEEP_VERSIONS: '5', VERSION_INTERVAL_MIN: '10' }); const c = await userClient(t2, 'auto@example.com');
+    try {
+      const f = (await c.upload('auto.pdf', PDF)).json;
+      for (let v = 1; v <= 6; v++) {
+        const r = await c.req('PUT', `/api/files/${f.id}/content`, { raw: Buffer.concat([PDF, Buffer.from('s' + v)]), headers: { 'if-match': String(v) } });
+        assert.equal(r.status, 200);
+      }
+      const d = (await c.get(`/api/files/${f.id}`)).json;
+      assert.equal(d.version, 7, 'every save still bumps the version');
+      assert.equal(d.versions.length, 1, 'but only one checkpoint is retained inside the interval');
+      assert.equal(walk(t2.config.blobDir).length, 2, 'superseded blobs are deleted, not leaked');
+      // Once the interval has elapsed, the next save retains another checkpoint.
+      t2.app.ctx.db.prepare('UPDATE file_versions SET created_at = created_at - 11 * 60 * 1000').run();
+      await c.req('PUT', `/api/files/${f.id}/content`, { raw: Buffer.concat([PDF, Buffer.from('later')]), headers: { 'if-match': '7' } });
+      assert.equal((await c.get(`/api/files/${f.id}`)).json.versions.length, 2);
+    } finally { await t2.close(); }
   });
 
   it('leaves no temp files behind after failed or rejected uploads', async () => {

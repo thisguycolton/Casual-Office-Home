@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, downloadUrl, inlineUrl, type FileDetails } from '../api.ts';
 import { KindIcon, IconDownload, IconChevron } from '../components/icons.tsx';
 import { Spinner } from '../components/ui.tsx';
+import { EditorFrame } from '../editors/EditorFrame.tsx';
 import { formatSize, KIND_LABEL } from '../format.ts';
 
 const EDITOR_NAME = { docs: 'Casual Docs', sheets: 'Casual Sheets', slides: 'Casual Slides', pdf: 'Casual PDF' } as const;
@@ -31,6 +32,8 @@ export function OpenPage() {
 
   if (err) return <div className="page"><p className="form-error" role="alert">{err}</p><Link to="/files">Back to My Files</Link></div>;
   if (!d) return <div className="page"><Spinner /></div>;
+  // Docs and Sheets open in the embedded editor; other kinds fall through to the preview below.
+  if (d.editor === 'docs' || d.editor === 'sheets') return <EditorFrame key={d.id} file={d} />;
   // `path` lists the file's ancestors (not the file itself).
   const back = d.path.length > 0 ? `/files/${d.path[d.path.length - 1]!.id}` : '/files';
   return (
@@ -51,7 +54,7 @@ export function OpenPage() {
       {d.kind === 'image' && <div className="preview"><img src={inlineUrl(d.id)} alt={d.name} /></div>}
       {d.kind === 'text' && (text !== null ? <pre className="preview text-preview">{text}</pre>
         : <p className="muted">{d.size > MAX_TEXT_PREVIEW ? 'This text file is too large to preview. Download it to view it.' : 'Loading preview…'}</p>)}
-      {d.editor && (
+      {(d.editor === 'slides' || d.editor === 'pdf') && (
         <div className="notice" role="status">
           <strong>{EDITOR_NAME[d.editor]} will open this file here.</strong>
           <p>The editor integration is not wired up yet, so for now you can download the file. Nothing about this file has been changed.</p>

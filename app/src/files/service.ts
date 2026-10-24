@@ -270,7 +270,9 @@ export class FileService {
         const cur = this.get(userId, id);
         if (cur.version !== ifMatch) throw new AppError(409, 'version_conflict', `File changed (current version ${cur.version})`);
         const now = Date.now();
-        if (this.ctx.config.keepVersions > 0) {
+        const last = this.db.prepare('SELECT MAX(created_at) t FROM file_versions WHERE file_id = ?').get(id) as { t: number | null };
+        const checkpointDue = last.t === null || now - last.t >= this.ctx.config.versionIntervalMs;
+        if (this.ctx.config.keepVersions > 0 && checkpointDue) {
           this.db.prepare('INSERT INTO file_versions (file_id,version,storage_key,size,sha256,created_at) VALUES (?,?,?,?,?,?)')
             .run(id, cur.version, cur.storage_key, cur.size, cur.sha256, now);
           const old = this.db.prepare('SELECT version, storage_key FROM file_versions WHERE file_id = ? ORDER BY version DESC LIMIT -1 OFFSET ?')
@@ -279,7 +281,7 @@ export class FileService {
             this.db.prepare('DELETE FROM file_versions WHERE file_id = ? AND version = ?').run(id, o.version);
             dropKeys.push(o.storage_key);
           }
-        } else dropKeys.push(cur.storage_key!);
+        } else dropKeys.push(cur.storage_key!); // between checkpoints the replaced content is not retained
         this.db.prepare('UPDATE files SET storage_key=?, size=?, sha256=?, version=version+1, updated_at=? WHERE id=?')
           .run(key, rec.size, rec.sha256, now, id);
         return this.get(userId, id);
