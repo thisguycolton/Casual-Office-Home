@@ -1,0 +1,53 @@
+# Coolify deployment: pulls the prebuilt images from GHCR (see .github/workflows/images.yml).
+# Coolify's own proxy provides the domain and HTTPS, so there is no Caddy here and no published port.
+#
+# In Coolify:  New Resource → Docker Compose (Empty / from Git repo, file: compose.coolify.yaml)
+#   1. Set the domain for the `app` service (port 3000) — Coolify fills SERVICE_FQDN_APP below.
+#   2. Set BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD (≥12 chars) for the first admin, deploy once, then delete the password variable.
+#   3. If the GHCR packages are private, add a registry login in Coolify (or make the packages public).
+services:
+  app:
+    image: ghcr.io/thisguycolton/casual-office-app:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      - SERVICE_FQDN_APP_3000
+      - PORT=3000
+      - DATA_DIR=/data
+      - SECURE_COOKIES=true
+      - TRUST_PROXY=true
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-500}
+      - USER_QUOTA_MB=${USER_QUOTA_MB:-0}
+      - KEEP_VERSIONS=${KEEP_VERSIONS:-5}
+      - VERSION_INTERVAL_MIN=${VERSION_INTERVAL_MIN:-10}
+      - BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL:-}
+      - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-}
+      - COLLAB_JWT_SECRET=${SERVICE_PASSWORD_64_COLLAB}
+      - COLLAB_INTERNAL_URL=http://collab:1234
+    volumes:
+      - app-data:/data
+    depends_on:
+      collab:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  collab:
+    image: ghcr.io/thisguycolton/casual-office-collab:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      - PORT=1234
+      - COLLAB_JWT_SECRET=${SERVICE_PASSWORD_64_COLLAB}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1234/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  app-data:
